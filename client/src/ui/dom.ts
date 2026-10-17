@@ -33,7 +33,7 @@ export function clear(el: HTMLElement): HTMLElement {
   return el;
 }
 
-export function mount(el: HTMLElement, ...children: Child[]): HTMLElement {
+export function mount(el: HTMLElement, ...children: (Child | Child[])[]): HTMLElement {
   clear(el);
   append(el, children);
   return el;

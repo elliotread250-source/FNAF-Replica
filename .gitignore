@@ -153,3 +153,4 @@ dist/
 playwright-report/
 test-results/
 .env
+*.tmp.mjs
