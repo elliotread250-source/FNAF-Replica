@@ -1,0 +1,37 @@
+{
+  "name": "fnaf-replica",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FNAF Replica: an unofficial, non-commercial 4-player co-op fan game.",
+  "type": "module",
+  "workspaces": ["shared", "server", "client"],
+  "engines": { "node": "20.x" },
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
+    "start": "node server/dist/index.js",
+    "dev": "concurrently -n server,client -c red,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "db:migrate": "npm run migrate -w server",
+    "db:generate": "npm run db:generate -w server",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "typecheck": "tsc -p shared --noEmit && tsc -p server --noEmit && tsc -p client --noEmit && tsc -p scripts --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "sim:classic": "tsx scripts/simClassic.ts",
+    "sim:balance": "tsx scripts/balance.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@playwright/test": "1.56.1",
+    "@types/node": "20.17.10",
+    "concurrently": "9.1.0",
+    "esbuild": "0.24.2",
+    "eslint": "9.17.0",
+    "globals": "15.14.0",
+    "prettier": "3.4.2",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.1",
+    "vitest": "2.1.8"
+  }
+}

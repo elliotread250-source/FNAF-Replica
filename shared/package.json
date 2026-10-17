@@ -1,0 +1,13 @@
+{
+  "name": "@fnaf/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./src/index.ts", "import": "./dist/index.js" }
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=neutral --packages=external --outfile=dist/index.js"
+  },
+  "dependencies": { "zod": "3.24.1" }
+}

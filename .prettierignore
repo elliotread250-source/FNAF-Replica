@@ -1,0 +1,6 @@
+node_modules
+dist
+docs/PROMPT.md
+server/src/db/migrations
+playwright-report
+test-results

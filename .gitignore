@@ -147,3 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# FNAF Replica
+dist/
+playwright-report/
+test-results/
+.env
