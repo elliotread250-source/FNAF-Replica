@@ -155,6 +155,7 @@ export async function cumulativeAchievements(db: DbOrTx, userId: string): Promis
   if (s && s.nightsPlayed >= 100) out.push('hundred');
   if (s && (s.deathsBy.bonnie ?? 0) >= 10) out.push('bonnie_x10');
   if (arch.filter((a) => a.kind === 'newspaper').length >= 6) out.push('newspaper');
+  if (arch.some((a) => a.kind === 'character' && a.itemId === 'shadow_bonnie')) out.push('shadow_seen');
   if (arch.filter((a) => a.kind === 'minigame' && a.itemId.endsWith(':done')).length >= 3) out.push('minigame_all');
   const presets = new Set(prog.flatMap((p) => p.presetsBeaten));
   if (PRESETS.every((p) => p.id === 'golden' || presets.has(p.id))) out.push('golden_star');

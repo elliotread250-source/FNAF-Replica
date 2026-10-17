@@ -27,7 +27,7 @@ register('archives', (root) => {
       body = h(
         'div',
         { class: 'split' },
-        h('div', { class: 'left' }, view.canvas, h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: xray, onchange: (e: Event) => ((xray = (e.target as HTMLInputElement).checked), view.tt.showCharacter(selected, xray)) }), 'X-ray: endoskeleton view'), h('h3', null, store.roster.name(r.id)), h('div', null, r.description), h('div', { class: 'dim', style: 'margin-top:6px' }, `Counter: ${r.counter}`), h('div', { class: 'dim' }, r.shipped ? `Wave ${r.wave}` : `Wave ${r.wave}: coming soon (modelled, no night rule yet)`)),
+        h('div', { class: 'left' }, view.canvas, h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: xray, onchange: (e: Event) => ((xray = (e.target as HTMLInputElement).checked), view.tt.showCharacter(selected, xray)) }), 'X-ray: endoskeleton view'), h('h3', null, store.roster.name(r.id)), h('div', null, store.roster.fill(r.description)), h('div', { class: 'dim', style: 'margin-top:6px' }, `Counter: ${store.roster.fill(r.counter)}`), h('div', { class: 'dim' }, r.shipped ? `Wave ${r.wave}` : `Wave ${r.wave}: coming soon (modelled, no night rule yet)`)),
         h(
           'div',
           { class: 'right' },

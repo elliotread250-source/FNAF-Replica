@@ -9,7 +9,7 @@ export interface Preset {
 }
 
 export const PRESETS: Preset[] = [
-  { id: 'golden', name: 'Golden Freddy', ai: { freddy: 1, bonnie: 9, chica: 8, foxy: 7 }, reward: ['office_golden_hour'], rewardText: '"It\'s Me" achievement and the Golden Hour desk' },
+  { id: 'golden', name: '{golden}', ai: { freddy: 1, bonnie: 9, chica: 8, foxy: 7 }, reward: ['office_golden_hour'], rewardText: '"It\'s Me" achievement and the Golden Hour desk' },
   { id: 'old_friends', name: 'Old Friends', ai: { freddy: 20, bonnie: 0, chica: 0, foxy: 0 }, reward: ['guard_top_hat'], rewardText: 'Top Hat guard uniform' },
   { id: 'pirates_revenge', name: "Pirate's Revenge", ai: { freddy: 0, bonnie: 0, chica: 0, foxy: 20 }, reward: ['acc_eyepatch'], rewardText: 'Eyepatch accessory' },
   { id: 'ladies_night', name: "Ladies' Night", ai: { freddy: 0, bonnie: 0, chica: 20, foxy: 0 }, reward: ['office_cupcake'], rewardText: 'Cupcake desk prop' },

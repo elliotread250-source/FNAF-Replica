@@ -16,6 +16,7 @@ import { PuppeteerMap } from './puppeteer';
 import { runDeathMinigame } from '../minigames';
 import { newspaperTex } from '../render/textures';
 import { api } from '../api';
+import { TurntableView } from '../ui/turntableView';
 
 const YAW_MAX = 0.96;
 const CAM_FPS = 15;
@@ -67,6 +68,9 @@ export class GameSession {
   private ghostTick = 0;
   private shadowStare = 0;
   private tStart = performance.now();
+  private seenChars = new Set<string>();
+  private shadowBonnie = { on: false, since: 0 };
+  private kitchenTune = false;
 
   constructor(
     readonly start: NightStart,
@@ -130,7 +134,7 @@ export class GameSession {
       audio.play('squelch');
     };
     const onCallout = (c: { from: string; text: string; ghost?: boolean }) => {
-      this.hud?.chat(c.from, `📻 ${c.text}`, c.ghost);
+      this.hud?.chat(c.from, `📻 ${store.roster.fill(c.text)}`, c.ghost);
       audio.play('blip');
     };
     const onSpeak = (s: { from: string; on: boolean }) => (s.on ? this.speaking.add(s.from) : this.speaking.delete(s.from));
@@ -309,6 +313,10 @@ export class GameSession {
       if (this.hud?.chatOpen) return;
       if (e.repeat) return;
       const c = e.code;
+      if (c === 'F9' && ['localhost', '127.0.0.1'].includes(location.hostname)) {
+        e.preventDefault();
+        return this.toggleDebug();
+      }
       if (is('pause', c)) return this.pause();
       if (this.puppeteer) return;
       if (is('chat', c)) {
@@ -825,11 +833,18 @@ export class GameSession {
     const text = store.settings.hideGore
       ? 'You were caught.'
       : `${name} was found stuffed in a ${store.roster.slot('leader')} suit. Time of death: ${hour === 0 ? 12 : hour} AM. Cause: ${store.roster.name(by)}.`;
-    const el = h('div', { class: 'overlay-full gameover' }, h('div', { class: 'big' }, 'GAME OVER'), h('p', { style: 'max-width:640px;font-size:20px' }, text), h('p', { class: 'dim' }, `${store.roster.name(by)} got you at ${hour === 0 ? 12 : hour} AM`));
+    let tv: TurntableView | null = null;
+    if (!store.settings.hideGore) {
+      tv = new TurntableView(220, 260);
+      tv.tt.showGuard(store.me?.user.equipped ?? {});
+      tv.tt.pivot.rotation.x = 0.25;
+    }
+    const el = h('div', { class: 'overlay-full gameover' }, h('div', { class: 'big' }, 'GAME OVER'), tv?.canvas, h('p', { style: 'max-width:640px;font-size:20px' }, text), h('p', { class: 'dim' }, `${store.roster.name(by)} got you at ${hour === 0 ? 12 : hour} AM`));
     root.appendChild(el);
     audio.startLoop('deadstatic', 'static');
     setTimeout(() => {
       el.remove();
+      tv?.dispose();
       audio.stopLoop('deadstatic');
       this.jumpPhase = 'none';
       if (this.ended) this.showEnd();
@@ -927,6 +942,7 @@ export class GameSession {
     this.hud?.update(v, { tablet, cam: this.cam(), panelOpen: this.panelOpen, speaking: this.speaking, playersOnline: new Set(), hourFrac, doors: doorStates });
     if (this.call) this.call.tick();
 
+    this.debugMap?.update(v);
     if (this.puppeteer) {
       this.puppeteer.update(v);
       R.post.uniforms.darkness.value = 1;
@@ -940,6 +956,56 @@ export class GameSession {
     }
     if (this.itsMeUntil > performance.now()) this.flashText("IT'S ME");
     else this.flashText('');
+  }
+
+  private lastNodeRolled = '';
+  private debugMap: PuppeteerMap | null = null;
+
+  /** Development only: the node graph with every animatronic this client can see (ghosts see all). */
+  private toggleDebug(): void {
+    if (this.debugMap) {
+      this.debugMap.dispose();
+      this.debugMap = null;
+      return;
+    }
+    this.debugMap = new PuppeteerMap(document.getElementById('ui') as HTMLElement, this.map, () => {});
+  }
+
+  private markSeen(id: string): void {
+    if (this.seenChars.has(id) || !store.me) return;
+    this.seenChars.add(id);
+    if (store.me.archive.some((a) => a.kind === 'character' && a.id === id)) return;
+    api.archive('character', id).then((r) => r.achievements.forEach((a) => toast(`Achievement: ${a}`, 'ach')), () => {});
+  }
+
+  private glitchDimension(): void {
+    this.shadowBonnie.on = false;
+    this.markSeen('shadow_bonnie');
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 180;
+    canvas.style.cssText = 'width:100vw;height:100vh;image-rendering:pixelated';
+    const el = h('div', { class: 'overlay-full', style: 'background:#000;z-index:60' }, canvas);
+    document.body.appendChild(el);
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const end = performance.now() + 5000;
+    audio.play('garble', { gain: 0.5, rate: 0.7 });
+    const draw = () => {
+      if (performance.now() > end) {
+        el.remove();
+        return;
+      }
+      // Distorted rooms: smeared checkerboards and stretched doorways.
+      for (let y = 0; y < 180; y += 4) {
+        const off = Math.sin(y * 0.1 + performance.now() * 0.004) * 30;
+        for (let x = 0; x < 320; x += 16) {
+          ctx.fillStyle = ((x + y + Math.floor(off)) / 16) % 2 < 1 ? (store.settings.photosensitive ? '#222' : '#4a1a6a') : '#000';
+          ctx.fillRect(x + off, y, 16, 4);
+        }
+      }
+      requestAnimationFrame(draw);
+    };
+    draw();
   }
 
   private lastKiller(): string {
@@ -1103,6 +1169,21 @@ export class GameSession {
       }
       if (this.hallu.fakeAnim && now < this.hallu.fakeUntil) staged.push({ id: this.hallu.fakeAnim, slot: 2, pose: 'stare' });
       if (v.shadowNode === node) staged.push({ id: 'shadow_freddy', slot: 1, pose: 'stare' });
+      for (const st of staged) this.markSeen(st.id);
+      // Shadow Bonnie: 1 in 5,000 views of Party Room 2. Stare for 3 s and you slip somewhere else.
+      if (node === 'party_b') {
+        if (!this.shadowBonnie.on && this.lastNodeRolled !== node && Math.random() < 1 / 5000) this.shadowBonnie = { on: true, since: now };
+        if (this.shadowBonnie.on) {
+          staged.push({ id: 'shadow_bonnie', slot: 0, pose: 'stare' });
+          if (now - this.shadowBonnie.since > 3000) this.glitchDimension();
+        }
+      } else this.shadowBonnie.on = false;
+      this.lastNodeRolled = node;
+      // Very rarely the kitchen plays the music box at 4 AM.
+      if (node === 'kitchen' && v.h === 4 && this.start.seed % 50 === 0 && !this.kitchenTune) {
+        this.kitchenTune = true;
+        audio.melody('freddy', { bpm: 60, gain: 0.08, wobble: 1 });
+      }
       stageCharacters(room, staged);
       // Cove curtains and sign.
       const fx = v.an.find((a) => a.id === 'foxy');

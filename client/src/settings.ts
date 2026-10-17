@@ -21,6 +21,7 @@ export interface Settings {
   reducedJumpscares: boolean;
   photosensitive: boolean;
   subtitles: boolean;
+  callVoice: boolean;
   subtitleSize: 'small' | 'medium' | 'large';
   visualCues: boolean;
   toggleLights: boolean;
@@ -74,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reducedJumpscares: false,
   photosensitive: false,
   subtitles: true,
+  callVoice: false,
   subtitleSize: 'medium',
   visualCues: false,
   toggleLights: false,

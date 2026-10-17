@@ -27,7 +27,7 @@ export const NIGHTSHIFT_NIGHTS: Record<number, NightDef> = {
   4: { ai: { freddy: 3, bonnie: 6, chica: 7, foxy: 7 }, puppet: true, goldenOdds: 1 / 10000 },
   5: { ai: { freddy: 5, bonnie: 8, chica: 9, foxy: 8 }, puppet: true, goldenOdds: 1 / 10000 },
   6: {
-    ai: { freddy: 8, bonnie: 12, chica: 14, foxy: 16 },
+    ai: { freddy: 6, bonnie: 12, chica: 14, foxy: 16 },
     puppet: true,
     goldenOdds: 1 / 1000,
     extended: { nightmare: 8, bb: 8 },

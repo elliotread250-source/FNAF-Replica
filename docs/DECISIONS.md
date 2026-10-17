@@ -16,3 +16,30 @@ One line per call the prompt didn't make for me, or where I deviated from it and
 - `archive_unlocks` table added (not in the prompt's schema) to track newspapers, minigames and characters seen for the Archives and the related achievements. `stats.skin_changes` added for "Dressed To Kill".
 - Railway build: Nixpacks runs `npm ci` itself in its install phase (dev deps included); running it again in buildCommand collides with the cached node_modules mount (EBUSY), so the build command is just `npm run build`.
 - Build tools (esbuild, vite) are regular dependencies: Railway sets NODE_ENV=production during install, which skips devDependencies.
+- Camera rooms are separate small scenes (one per node, built on first view and cached) rather than one building-wide scene. Same visual result, far simpler culling, and each room renders at 15 fps into a 640x480 target.
+- Post-processing uses Three's own EffectComposer passes (RenderPass, UnrealBloomPass, a custom grain/vignette/aberration/hallucination ShaderPass, SMAAPass on High, OutputPass) instead of the pmndrs `postprocessing` package. Same effects, one fewer dependency.
+- Generated textures are cached in memory per session, not in IndexedDB; generating all of them takes well under a second.
+- Lights are in physical units. Camera rooms use a single `LUX` multiplier so the authored numbers stay readable, and every security camera carries a weak IR lamp so silhouettes read on the feed (the prompt's "cheap IR camera" look).
+- Character heads and arms hang off the endoskeleton's joints but are re-parented to the body, so hiding the endo metal (intact costumes) never hides the head.
+- Eye glow is emissive plus bloom rather than a point light per eye: adding and removing lights at runtime recompiles shaders, which would stutter on camera switches.
+- Classic and co-op passive drain, co-op power scale and Night 6 Freddy were tuned with the balance script; see BALANCE.md for the before/after and the bot caveats.
+- Bots treat "heard footsteps at the door but the light shows nothing" as Freddy and hold the door, the same lesson a human learns.
+- Callouts, presets and achievement descriptions carry `{golden}`/`{fox}`/`{leader}` placeholders filled through the roster, so original mode never leaks a tribute name.
+- Ghosts get free cameras and pings; the read-only "station view" of a living guard's office isn't built.
+- `?perf=low` forces the low preset (half render scale, 30 fps). The four-player Playwright test uses it because four software-rendered WebGL tabs are slow in CI.
+- Localhost-only dev aids: `?gallery=<node>` renders one scene, F9 toggles a node-graph overlay of what this client can see.
+- First-seen characters, zoomed newspapers and played minigames are recorded through `POST /api/me/archive` (an endpoint beyond the prompt's REST table) to drive the Archives and their achievements.
+
+## Security checklist (Part 12.6)
+
+- Passwords: Argon2id via `@node-rs/argon2` (19 MiB, 2 iterations, parallelism 1). Prebuilt binary installs on Railway; no bcrypt fallback needed.
+- Sessions: 32 random bytes, stored as HMAC-SHA256 with `SESSION_SECRET`, `httpOnly`, `Secure` in production, `SameSite=Lax`, 30-day rolling expiry refreshed at most hourly. Logout deletes the row.
+- CSRF: state-changing `/api` calls must be `application/json` and carry a same-origin `Origin` (required in production).
+- Validation: zod on every REST body and every socket message; three malformed socket messages disconnect.
+- Rate limits: login (10/15 min per IP, 5/15 min per username), sign-up (5/hour per IP in production), guest creation, forgot-password, lobby creation (10/10 min per user), chat and callouts (1/s), inputs (20/s per client).
+- Forgot-password always answers the same way when SMTP is configured (no user enumeration).
+- SQL only through Drizzle's parameterised queries (and two `sql` template fragments with bound parameters).
+- No secrets in the repo: `SESSION_SECRET` lives only in Railway variables; `.env` is gitignored.
+- The server owns all randomness, timers, AI, power maths and rewards; the client sends intents.
+- Headers: Content-Security-Policy (self scripts, Google Fonts styles and fonts, `ws:`/`wss:` connect, `blob:`/`data:` media), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN`.
+- User text (names, chat) is always set with `textContent`; the client never uses `innerHTML` with user content.

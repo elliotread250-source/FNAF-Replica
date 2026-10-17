@@ -101,7 +101,7 @@ export class Hud {
       this.callouts,
       ...CALLOUTS.map((c, i) => {
         const a = (i / CALLOUTS.length) * Math.PI * 2 - Math.PI / 2;
-        return h('button', { style: `left:${50 + Math.cos(a) * 38}%;top:${50 + Math.sin(a) * 38}%`, onclick: () => (this.hdl.onCallout(i), this.toggleCallouts(false)) }, c.replace("Foxy", store.roster.name('foxy')).replace('Freddy', store.roster.name('freddy')));
+        return h('button', { style: `left:${50 + Math.cos(a) * 38}%;top:${50 + Math.sin(a) * 38}%`, onclick: () => (this.hdl.onCallout(i), this.toggleCallouts(false)) }, store.roster.fill(c));
       }),
     );
   }

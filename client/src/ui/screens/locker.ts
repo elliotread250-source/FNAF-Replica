@@ -21,7 +21,7 @@ const TABS: [CosmeticCategory | 'shop', string][] = [
 ];
 
 export function unlockText(c: Cosmetic): string {
-  if (c.unlock?.preset) return `Beat the ${PRESETS.find((p) => p.id === c.unlock?.preset)?.name ?? c.unlock.preset} preset`;
+  if (c.unlock?.preset) return `Beat the ${store.roster.fill(PRESETS.find((p) => p.id === c.unlock?.preset)?.name ?? c.unlock.preset)} preset`;
   if (c.unlock?.achievement) return `Achievement: ${ACHIEVEMENTS_BY_ID[c.unlock.achievement]?.name ?? c.unlock.achievement}`;
   if (c.price !== null) return `${c.price} ${store.roster.currency()}`;
   return 'Earned by playing';

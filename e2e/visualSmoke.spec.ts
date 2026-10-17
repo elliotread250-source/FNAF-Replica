@@ -9,7 +9,7 @@ test('title, office and a camera feed', async ({ page }) => {
   await page.goto(process.env.E2E_URL ?? '/');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.waitForTimeout(3000);
-  await page.screenshot({ path: 'docs/screenshots/title.png' });
+  await page.screenshot({ path: 'docs/screenshots/title.jpg', type: 'jpeg', quality: 82 });
   await page.getByRole('button', { name: 'Play as Guest' }).click();
   await page.getByRole('button', { name: 'Clock In' }).click();
   await page.getByText('Classic Office (solo)').click();
@@ -20,10 +20,10 @@ test('title, office and a camera feed', async ({ page }) => {
   await page.waitForTimeout(1200);
   await page.keyboard.down('KeyZ');
   await page.waitForTimeout(500);
-  await page.screenshot({ path: 'docs/screenshots/office.png' });
+  await page.screenshot({ path: 'docs/screenshots/office.jpg', type: 'jpeg', quality: 82 });
   await page.keyboard.up('KeyZ');
   await page.mouse.move(640, 360);
   await page.keyboard.press('Space');
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: 'docs/screenshots/camera.png' });
+  await page.screenshot({ path: 'docs/screenshots/camera.jpg', type: 'jpeg', quality: 82 });
 });

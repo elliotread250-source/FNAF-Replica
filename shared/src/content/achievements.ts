@@ -12,7 +12,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'classic5', name: 'Old School', description: 'Beat Night 5 in Classic Office', reward: 'title_pizza_purist', icon: 'C' },
   { id: 'night6', name: 'Overtime', description: 'Beat Night 6', reward: 'badge_star2', icon: '6' },
   { id: 'four_twenty', name: 'Twenty Twenty Twenty', description: 'Beat the 4/20 preset', icon: '★' },
-  { id: 'its_me', name: "It's Me", description: 'Get caught by Golden Freddy', reward: 'title_its_me', icon: '?' },
+  { id: 'its_me', name: "It's Me", description: 'Get caught by {golden}', reward: 'title_its_me', icon: '?' },
   { id: 'no_doors', name: 'Open Door Policy', description: 'Survive a night without closing a door', icon: 'D' },
   { id: 'no_cams', name: 'Blind Faith', description: 'Survive a night without raising the tablet', icon: 'B' },
   { id: 'last_one_standing', name: 'Last Guard Standing', description: 'Be the only survivor at 6 AM in a 4-player lobby', icon: 'L' },

@@ -83,7 +83,7 @@ register('profile', (root, params) => {
                 ].map(([k, v]) => h('tr', null, h('td', { class: 'dim' }, String(k)), h('td', null, String(v ?? 0)))),
               ),
               h('h3', { style: 'margin-top:10px' }, `Achievements ${got.size}/${ACHIEVEMENTS.length}`),
-              h('div', { class: 'grid', style: 'grid-template-columns:repeat(auto-fill,minmax(230px,1fr))' }, ACHIEVEMENTS.map((a) => h('div', { class: `ach ${got.has(a.id) ? '' : 'off'}` }, achIcon(a.icon, got.has(a.id)), h('div', null, h('div', null, a.name), h('div', { class: 'dim', style: 'font-size:13px' }, a.description))))),
+              h('div', { class: 'grid', style: 'grid-template-columns:repeat(auto-fill,minmax(230px,1fr))' }, ACHIEVEMENTS.map((a) => h('div', { class: `ach ${got.has(a.id) ? '' : 'off'}` }, achIcon(a.icon, got.has(a.id)), h('div', null, h('div', null, a.name), h('div', { class: 'dim', style: 'font-size:13px' }, store.roster.fill(a.description)))))),
               own
                 ? h(
                     'div',

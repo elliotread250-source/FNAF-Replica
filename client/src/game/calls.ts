@@ -51,7 +51,7 @@ export class CallPlayer {
       else if (line.cue === 'static') audio.play('static', { gain: 0.6, bus: 'voice' });
       else if (line.cue === 'garble') audio.play('garble', { gain: 0.7, bus: 'voice' });
       else if (!line.text.startsWith('[') && !line.text.startsWith('▓') && !line.text.startsWith('░') && !line.text.startsWith('▒')) {
-        if (store.settings.bindings && 'speechSynthesis' in window && (store.settings as unknown as { callVoice?: boolean }).callVoice) {
+        if ('speechSynthesis' in window && store.settings.callVoice) {
           this.voice = new SpeechSynthesisUtterance(text);
           this.voice.pitch = 0.6;
           speechSynthesis.speak(this.voice);

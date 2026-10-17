@@ -73,7 +73,8 @@ export const C2S = {
 
 export type C2SName = keyof typeof C2S;
 
-export const CALLOUTS = ['Left door!', 'Right door!', 'Check cams!', 'Low power!', "Foxy's running!", "Freddy's moving!", "I'm fine", 'Help!'];
+// Placeholders are filled through the roster so original mode never shows a tribute name.
+export const CALLOUTS = ['Left door!', 'Right door!', 'Check cams!', 'Low power!', "{fox}'s running!", "{leader}'s moving!", "I'm fine", 'Help!'];
 
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 

@@ -164,7 +164,7 @@ function customPanel(l: LobbyState, isHost: boolean, toggle: () => void, open: b
       ext[r.id] = Number(rng.value);
       sock.emit('lobby:settings', { extended: ext });
     });
-    return h('div', { class: `slider ${on ? '' : 'dim'}`, title: r.counter }, h('div', null, store.roster.name(r.id), ' ', v), rng, h('div', { class: 'dim', style: 'font-size:12px' }, r.counter));
+    return h('div', { class: `slider ${on ? '' : 'dim'}`, title: store.roster.fill(r.counter) }, h('div', null, store.roster.name(r.id), ' ', v), rng, h('div', { class: 'dim', style: 'font-size:12px' }, store.roster.fill(r.counter)));
   });
   const puppet = h('input', { type: 'range', min: '0', max: '3', step: '0.1', value: String(l.puppet), disabled: !isHost });
   puppet.addEventListener('change', () => sock.emit('lobby:settings', { puppet: Number(puppet.value) }));
@@ -178,7 +178,7 @@ function customPanel(l: LobbyState, isHost: boolean, toggle: () => void, open: b
       { class: 'row', style: 'margin:8px 0' },
       PRESETS.map((p) =>
         button(
-          `${p.name}`,
+          store.roster.fill(p.name),
           () => {
             if (!isHost) return;
             sock.emit('lobby:settings', { customAi: p.ai, puppet: p.puppet ?? 0, extended: p.extended ?? {} });

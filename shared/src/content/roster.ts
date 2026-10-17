@@ -277,7 +277,7 @@ const extended: RosterEntry[] = [
   ext('toy_chica', 'Toy Chica', 'Party Hen', 2, L('bird', '#f7d23a', '#ffffff', '#5cc8ff', '#ff7a1a', 1.85, { glossy: true, prop: 'cupcake' }), 'Lost her beak somewhere.', 'Mask or door.'),
   ext('mangle', 'Mangle', 'Tangle', 2, L('fox', '#f2f2f2', '#ff8ac8', '#ffe066', '#ff3a6a', 1.6, { withered: true }), 'A jumble of parts crawling across the ceiling. Radio static rises as it nears.', 'Close the door at the exact moment the static peaks.', 'mangle'),
   ext('bb', 'Balloon Kid', 'Bobby Balloon', 2, L('small', '#d8b49a', '#c43a3a', '#2a5bd8', '#2a5bd8', 1.1, { prop: 'balloon', hat: 'propeller' }), 'Giggles in doorways. Steals your lights.', "Don't use lights while you hear him giggle.", 'bb'),
-  ext('jj', 'Jay-Jay', 'Polly Balloon', 2, L('small', '#d8b49a', '#7a3ac4', '#2a5bd8', '#7a3ac4', 1.1, { prop: 'balloon', hat: 'propeller' }), "Balloon Kid's quieter sister.", 'Same as her brother.'),
+  ext('jj', 'Jay-Jay', 'Polly Balloon', 2, L('small', '#d8b49a', '#7a3ac4', '#2a5bd8', '#7a3ac4', 1.1, { prop: 'balloon', hat: 'propeller' }), "{bb}'s quieter sister.", 'Same as her brother.'),
   ext('withered_freddy', 'Withered Freddy', 'Rotten Barnaby', 2, L('bear', '#4f3420', '#8f7552', '#7fd4ff', '#111', 2.0, { withered: true, hat: 'top' }), 'The old bandleader, decayed.', 'Mask.'),
   ext('withered_bonnie', 'Withered Bonnie', 'Faceless Rosie', 2, L('rabbit', '#3b3f7a', '#6d6aa0', '#ff2a2a', '#7a1a1a', 2.1, { withered: true }), 'No face. Just a jaw and two lights in the dark.', 'Mask.'),
   ext('withered_chica', 'Withered Chica', 'Hollow Peggy', 2, L('bird', '#a88a24', '#ccc', '#c44fd0', '#ff7a1a', 1.9, { withered: true }), 'Jaw hanging, wrists bare to the metal.', 'Mask.'),

@@ -13,12 +13,12 @@ export const CONFIG = {
       number
     >,
     // Tuned with `npm run sim:balance`, see docs/BALANCE.md. The prompt's starting values were 1/0.6/0.45/0.36.
-    CO_OP_POWER_SCALE: { 1: 1.0, 2: 0.55, 3: 0.4, 4: 0.3 } as Record<number, number>,
+    CO_OP_POWER_SCALE: { 1: 0.62, 2: 0.32, 3: 0.25, 4: 0.2 } as Record<number, number>,
     PASSIVE_DRAIN: { 1: 0, 2: 1 / 6, 3: 1 / 5, 4: 1 / 4, 5: 1 / 3, 6: 1 / 3, 7: 1 / 3 } as Record<number, number>,
     // The prompt's passive table (1% per 3 s on Night 5) drains 178% over a night on its own, which no
     // amount of skill survives. Both modes scale it down; see docs/DECISIONS.md and docs/BALANCE.md.
-    CLASSIC_PASSIVE_SCALE: 0.15,
-    CO_OP_PASSIVE_SCALE: 0.15,
+    CLASSIC_PASSIVE_SCALE: 0.05,
+    CO_OP_PASSIVE_SCALE: 0.05,
     FOXY_KNOCK_BASE: 1,
     FOXY_KNOCK_STEP: 5,
     BOOST_DURATION: 20,

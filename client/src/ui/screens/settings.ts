@@ -65,7 +65,7 @@ export function settingsPanel(onClose: () => void, initial: Tab = 'audio'): HTML
           mic.appendChild(o);
         }
       });
-      body = h('div', { class: 'sliders' }, slider('Master', 'master'), slider('Ambience', 'ambience'), slider('Effects', 'effects'), slider('Jump scares', 'jumpscare'), slider('Voice chat', 'voice'), h('div', null, h('label', null, 'Microphone'), mic), toggle('Voice activity instead of push-to-talk', 'voiceActivity'), toggle('Mute all voice', 'muteVoice'));
+      body = h('div', { class: 'sliders' }, slider('Master', 'master'), slider('Ambience', 'ambience'), slider('Effects', 'effects'), slider('Jump scares', 'jumpscare'), slider('Voice chat', 'voice'), h('div', null, h('label', null, 'Microphone'), mic), toggle('Voice activity instead of push-to-talk', 'voiceActivity'), toggle('Mute all voice', 'muteVoice'), 'speechSynthesis' in window ? toggle('Read phone calls aloud (browser voice)', 'callVoice') : null);
     } else if (tab === 'video') {
       body = h(
         'div',
