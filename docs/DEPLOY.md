@@ -42,6 +42,12 @@ Optional: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` for pa
 
 ## Things to click yourself
 
+- **Install the Railway GitHub App on this repo (needed for push-to-deploy).** Railway reports
+  `NO_INSTALLATION` for `elliotread250-source/FNAF-Replica`, so it never receives push events. Go to
+  https://github.com/apps/railway-app/installations/select_target, pick `elliotread250-source`, and add
+  `FNAF-Replica` to the repositories it can see. Until then, deploy the latest `main` from the service's
+  Deployments tab (or reconnect the source), which is how the current deploy was made.
+
 - **Wait for CI**: Settings → Deploy → enable "Wait for CI" so Railway only deploys commits whose GitHub
   Actions checks pass. The tools I used can't toggle it.
 - **Password reset email**: add the SMTP variables. Until then, "Forgot password?" explains it isn't set up.
