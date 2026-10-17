@@ -23,8 +23,8 @@
     "typecheck": "tsc -p shared --noEmit && tsc -p server --noEmit && tsc -p client --noEmit && tsc -p scripts --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "sim:classic": "tsx scripts/simClassic.ts",
-    "sim:balance": "tsx scripts/balance.ts"
+    "sim:classic": "tsx --tsconfig tsconfig.base.json scripts/simClassic.ts",
+    "sim:balance": "tsx --tsconfig tsconfig.base.json scripts/balance.ts"
   },
   "devDependencies": {
     "@eslint/js": "9.17.0",

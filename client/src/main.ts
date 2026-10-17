@@ -51,6 +51,10 @@ async function boot(): Promise<void> {
   const lt = setInterval(() => (loading.textContent = lines[++li % lines.length]), 500);
   await store.loadConfig();
   await store.refreshMe();
+  // ?perf=low: low preset, half render scale, 30 fps. For slow machines and headless test browsers.
+  if (new URLSearchParams(location.search).get('perf') === 'low') {
+    store.settings = { ...store.settings, quality: 'low', renderScale: 0.5, fpsCap: 30 };
+  }
   document.title = 'FNAF Replica';
   try {
     getRenderer();
