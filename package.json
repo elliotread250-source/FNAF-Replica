@@ -4,8 +4,14 @@
   "private": true,
   "description": "FNAF Replica: an unofficial, non-commercial 4-player co-op fan game.",
   "type": "module",
-  "workspaces": ["shared", "server", "client"],
-  "engines": { "node": "20.x" },
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
     "start": "node server/dist/index.js",
@@ -25,7 +31,6 @@
     "@playwright/test": "1.56.1",
     "@types/node": "20.17.10",
     "concurrently": "9.1.0",
-    "esbuild": "0.24.2",
     "eslint": "9.17.0",
     "globals": "15.14.0",
     "prettier": "3.4.2",
@@ -33,5 +38,8 @@
     "typescript": "5.7.2",
     "typescript-eslint": "8.18.1",
     "vitest": "2.1.8"
+  },
+  "dependencies": {
+    "esbuild": "0.24.2"
   }
 }

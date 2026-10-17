@@ -15,3 +15,4 @@ One line per call the prompt didn't make for me, or where I deviated from it and
 - Retro 1987 uniform: granted for beating Night 6, or for finding the backstage secret and surviving that night (the prompt lists both sources).
 - `archive_unlocks` table added (not in the prompt's schema) to track newspapers, minigames and characters seen for the Archives and the related achievements. `stats.skin_changes` added for "Dressed To Kill".
 - Railway build: Nixpacks runs `npm ci` itself in its install phase (dev deps included); running it again in buildCommand collides with the cached node_modules mount (EBUSY), so the build command is just `npm run build`.
+- Build tools (esbuild, vite) are regular dependencies: Railway sets NODE_ENV=production during install, which skips devDependencies.
