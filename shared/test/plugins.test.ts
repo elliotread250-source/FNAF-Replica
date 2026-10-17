@@ -65,7 +65,7 @@ describe('25. extended roster plugins', () => {
 
   it('Balloon Kid: turning a light on while he giggles steals that station\'s lights', () => {
     const w = quiet(coop(4, 7, 4, custom({ bb: 20 })));
-    let giggle: { station?: unknown } | undefined;
+    let giggle: Record<string, unknown> | undefined;
     for (let i = 0; i < secs(120) && !giggle; i++) giggle = step(w).find((e) => e.type === 'bb_giggle');
     expect(giggle).toBeDefined();
     const sid = giggle!.station as 'west';
