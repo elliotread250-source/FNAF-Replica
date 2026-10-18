@@ -9,6 +9,7 @@ const EnvZ = z.object({
   ROSTER_MODE: z.enum(['tribute', 'original']).default('tribute'),
   FAST_NIGHT: z.string().optional(),
   TEST_SEED: z.coerce.number().int().optional(),
+  TEST_HOOKS: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().optional(),
   SMTP_USER: z.string().optional(),
@@ -20,7 +21,7 @@ const EnvZ = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
-export type Env = z.infer<typeof EnvZ> & { fastNight: boolean; smtpEnabled: boolean; isProd: boolean };
+export type Env = z.infer<typeof EnvZ> & { fastNight: boolean; testHooks: boolean; smtpEnabled: boolean; isProd: boolean };
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const r = EnvZ.safeParse(source);
@@ -34,6 +35,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ...e,
     TEST_SEED: e.NODE_ENV === 'production' ? undefined : e.TEST_SEED,
     fastNight: e.FAST_NIGHT === '1',
+    testHooks: e.NODE_ENV !== 'production' && e.TEST_HOOKS === '1',
     smtpEnabled: Boolean(e.SMTP_HOST && e.SMTP_PORT && e.MAIL_FROM),
     isProd: e.NODE_ENV === 'production',
   };

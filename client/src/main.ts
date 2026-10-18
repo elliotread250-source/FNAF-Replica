@@ -9,6 +9,7 @@ import './ui/screens/settings';
 import './ui/screens/archives';
 import './ui/screens/paycheck';
 import './ui/screens/game';
+import './ui/screens/freeroam';
 import { go, startLoop, currentScreen } from './app';
 import { store } from './store';
 import { getSocket } from './net/socket';

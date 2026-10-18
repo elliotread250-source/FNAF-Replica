@@ -188,6 +188,7 @@ export function registerApiRoutes(app: FastifyInstance, ctx: Ctx, hooks: ApiHook
     rosterMode: ctx.env.ROSTER_MODE,
     smtp: ctx.env.smtpEnabled,
     fastNight: ctx.env.fastNight,
+    testHooks: ctx.env.testHooks,
     ice: [
       { urls: 'stun:stun.l.google.com:19302' },
       ...(ctx.env.TURN_URL ? [{ urls: ctx.env.TURN_URL, username: ctx.env.TURN_USERNAME, credential: ctx.env.TURN_CREDENTIAL }] : []),

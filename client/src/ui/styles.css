@@ -155,3 +155,17 @@ a { color: var(--red-hi); }
 .zoom-news { position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.9); display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: zoom-out; }
 .zoom-news canvas { max-height: 90vh; max-width: 90vw; }
 .puppeteer-map { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 900px); height: min(84vh, 700px); background: rgba(5, 4, 8, 0.96); border: 1px solid #4a2a5a; pointer-events: auto; }
+
+/* Free roam HUD */
+.fr-hud { position: absolute; inset: 0; }
+.fr-cross { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
+.fr-prompt { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-family: 'VT323', monospace; font-size: 26px; color: #f0ead8; text-shadow: 0 0 6px #000, 0 0 2px #000; opacity: 0; transition: opacity 0.12s; text-align: center; max-width: 80vw; }
+.fr-prompt.on { opacity: 1; }
+.fr-room { position: absolute; left: 24px; bottom: 22px; font-family: 'VT323', monospace; font-size: 22px; color: rgba(240, 234, 216, 0.6); text-shadow: 0 0 4px #000; }
+.fr-stamina { position: absolute; left: 50%; bottom: 22px; width: 160px; height: 4px; margin-left: -80px; background: rgba(255, 255, 255, 0.12); opacity: 0; transition: opacity 0.4s; }
+.fr-stamina > div { height: 100%; background: rgba(240, 234, 216, 0.7); }
+.fr-hint { position: absolute; right: 24px; bottom: 22px; font-family: 'Special Elite', monospace; font-size: 15px; color: rgba(240, 234, 216, 0.55); max-width: 40vw; text-align: right; }
+.fr-map { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 3px solid #3a2a1a; box-shadow: 0 0 40px #000; max-width: 94vw; max-height: 90vh; }
+.fr-pause { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); text-align: center; padding: 8vh 10vw; cursor: pointer; }
+.fr-pause h2 { font-size: 54px; }
+.fr-pause p { max-width: 620px; color: var(--dim); font-size: 17px; }

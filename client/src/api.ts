@@ -35,6 +35,7 @@ export interface ServerConfig {
   rosterMode: 'tribute' | 'original';
   smtp: boolean;
   fastNight: boolean;
+  testHooks?: boolean;
   ice: RTCIceServer[];
 }
 

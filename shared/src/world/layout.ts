@@ -93,7 +93,7 @@ function open(axis: 'x' | 'z', line: number, from: number, to: number, kind: Ope
 
 const D = (name: string, extra: DoorOpts = {}): DoorOpts => ({ kind: 'swing', name, ...extra });
 const DD = (name: string, extra: DoorOpts = {}): DoorOpts => ({ kind: 'double', name, ...extra });
-const SH = (name: string, circuit: CircuitId, extra: DoorOpts = {}): DoorOpts => ({ kind: 'shutter', name, circuit, ...extra });
+const SH = (name: string, circuit: CircuitId, extra: DoorOpts = {}): DoorOpts => ({ kind: 'shutter', name, circuit, startsOpen: true, ...extra });
 
 // Back of house, west
 open('z', 60, 4, 6, 'doorway', D('Staff Entrance interior door'));

@@ -1,5 +1,30 @@
 # Progress
 
+## Free-roam rebuild (docs/PROMPT_FREEROAM.md)
+
+The office build below is complete and still playable. The free-roam game is being built on top of it in
+the milestones of Part 12 of the free-roam prompt. The old modes stay until their replacements ship.
+
+- [x] FR 1: Skeleton verified (builds, typechecks, 49 tests green with a local Postgres); `three-mesh-bvh`, `recast-navigation`, `socket.io-msgpack-parser` pinned
+- [x] FR 2: Railway pipeline verified (project `arcade`, service `fnaf-replica`); see docs/DEPLOY.md for the GitHub App note
+- [~] FR 3: Walkable building: level data (39 rooms, ground + basement), generator, `docs/map.svg`, collision, first-person controller (walk, sprint, crouch, crawl, lean, jump, vault, steps, stairs), doors, flashlight, zone lighting and power model, footsteps and ambience, Day Shift and a solo Night Shift preview. Remaining for M3: ladders, more props and posters
+- [ ] FR 4: Accounts extension (stats columns, collectibles, photos) and the live 3D title scene
+- [ ] FR 5: Shared sim + first threat (server-authoritative loop, navmesh, AI framework, Bonnie, hiding, catch)
+- [ ] FR 6: Multiplayer (prediction, interpolation, guard models, revives, ghosts)
+- [ ] FR 7: Objectives and the full core night (power grid, breaker puzzle, fuses, music box, cupcakes, remaining animatronics, Nights 1 to 6, Director)
+- [ ] FR 8: Proximity voice and walkies
+- [ ] FR 9: Skins and economy for free-roam
+- [ ] FR 10: Remaining map content (vents, crawlspace, flooded tunnel, hiding spot types, tapes, notes)
+- [ ] FR 11: Custom Night, stars, achievements, Archives for free-roam
+- [ ] FR 12: Full roster in waves
+- [ ] FR 13: Showtime in 3D
+- [ ] FR 14: The Office (Mode D)
+- [ ] FR 15: Polish, balance, performance, accessibility
+
+---
+
+## Office build (original spec, docs/PROMPT.md)
+
 - [x] Milestone 1: Skeleton (workspaces, TS strict, ESLint flat config, Prettier, Vitest, CI, railway.json, /healthz)
 - [x] Milestone 2: Railway pipeline live (`arcade` project, `fnaf-replica` service, Postgres, public domain, deploys from `main`)
 - [x] Milestone 3: Database and accounts (Drizzle schema + migrations, Argon2id, hashed sessions, guest + claim, rate limits, zod)

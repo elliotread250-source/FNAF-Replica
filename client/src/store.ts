@@ -5,7 +5,7 @@ import { loadLocalSettings, merge, saveLocalSettings, type Settings } from './se
 type Listener = () => void;
 
 class Store {
-  config: ServerConfig = { rosterMode: 'tribute', smtp: false, fastNight: false, ice: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  config: ServerConfig = { rosterMode: 'tribute', smtp: false, fastNight: false, testHooks: false, ice: [{ urls: 'stun:stun.l.google.com:19302' }] };
   roster: Roster = makeRoster('tribute');
   me: MeResponse | null = null;
   settings: Settings = loadLocalSettings();

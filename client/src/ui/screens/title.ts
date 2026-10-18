@@ -131,13 +131,15 @@ register('title', (root) => {
   const items: HTMLElement[] = me
     ? [
         button('Clock In', () => go('play')),
+        button('Explore the Pizzeria (Day Shift)', () => go('freeroam', { mode: 'day' })),
+        button('Night Shift (Free Roam, solo preview)', () => go('freeroam', { mode: 'night' })),
         button('Locker Room', () => go('locker')),
         button('Personnel File', () => go('profile')),
         button('Notice Board', () => go('settings', { back: 'title' })),
         button('Archives', () => go('archives')),
         button('Leave', () => void logout()),
       ]
-    : [button('Clock In', () => go('login')), button('Play as Guest', () => go('login', { guest: true })), button('Notice Board', () => go('settings', { back: 'title' }))];
+    : [button('Clock In', () => go('login')), button('Play as Guest', () => go('login', { guest: true })), button('Explore the Pizzeria (Day Shift)', () => go('freeroam', { mode: 'day' })), button('Night Shift (Free Roam, solo preview)', () => go('freeroam', { mode: 'night' })), button('Notice Board', () => go('settings', { back: 'title' }))];
   mount(
     root,
     h(
