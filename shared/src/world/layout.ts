@@ -246,7 +246,7 @@ block('stage', 55.0, 20.3, 0.8, 1.0, 1.6, 'speaker');
 block('stage', 66.7, 12, 1.0, 1.2, 1.6, 'speaker', {}, 1.0);
 prop('steps', 'dining', 52, 13.5, 0, { w: 1.6, dir: 'x+', n: 3, run: 0.667 });
 prop('steps', 'dining', 52, 18.5, 0, { w: 1.6, dir: 'x+', n: 3, run: 0.667 });
-prop('steps', 'stage', 63, 22, 0, { w: 1.4, dir: 'z-', n: 3, run: 0.667 });
+prop('steps', 'stage', 63, 21.5, 0, { w: 1.4, dir: 'z-', n: 3, run: 0.5 });
 
 // Lounge: lockers along the west wall, benches, table, vending
 for (let i = 0; i < 14; i++) prop('locker', 'lounge', 2.3, 51.0 + i * 0.6, 90, { n: i + 1, usable: [0, 2, 4, 6, 9, 12].includes(i) });
@@ -302,7 +302,7 @@ for (let i = 0; i < 5; i++) block('dock', 70 + (i % 3) * 1.2, 52 + Math.floor(i 
 block('dock', 80, 56, 1.4, 4, 1.2, 'steel', { label: 'charging cart' });
 
 // Utility corridor clutter
-block('utility', 48, 57.7, 1.0, 1.0, 0.9, 'steel', { label: 'laundry cart' });
+block('utility', 48, 58.2, 1.0, 1.0, 0.9, 'steel', { label: 'laundry cart' });
 block('utility', 58, 56.7, 0.6, 0.6, 0.5, 'steel', { label: 'mop bucket' });
 
 // Basement
@@ -315,3 +315,45 @@ block('bServer', 58, 59.4, 5, 0.9, 2.0, 'steel', { label: 'server racks' }, BASE
 block('bOld', 12, 58, 1.6, 1.6, 1.6, 'wood', { label: 'old stage' }, BASEMENT_Y);
 block('bOld', 18.6, 62, 0.8, 2, 1.8, 'wood', { label: 'old cabinets' }, BASEMENT_Y);
 block('bHall', 22, 66.4, 8, 0.4, 0.4, 'steel', { label: 'pipes' }, BASEMENT_Y);
+
+// ---- Hiding spots ---------------------------------------------------------------------------------------
+
+type HideSpec = Omit<import('./types').HidingSpotDef, 'id' | 'yaw' | 'enterTime' | 'capacity' | 'hazard'> &
+  Partial<Pick<import('./types').HidingSpotDef, 'enterTime' | 'capacity' | 'hazard'>>;
+
+export const HIDE_SPECS: HideSpec[] = [];
+
+function hide(spec: HideSpec): void {
+  HIDE_SPECS.push(spec);
+}
+
+const EYE = { locker: 1.55, under_table: 0.45, closet: 1.55, stall: 1.6, cabinet: 0.6, chest: 0.5, ball_pit: 0.3, curtain: 1.55, costume_rack: 1.55, freezer: 1.55, cart: 0.7, coffin: 0.4, booth: 1.2, stealth_alcove: 1.55, sheet: 0.6, desk: 0.5 } as const;
+
+// Lounge lockers that stand ajar.
+for (const p of PROPS.filter((q) => q.type === 'locker' && q.p?.usable)) {
+  hide({ type: 'locker', room: 'lounge', x: p.x, y: EYE.locker, z: p.z, cover: 0.9, checkPriority: 0.9, exits: [{ x: p.x + 0.75, z: p.z }] });
+}
+// Under every table: two exits, either long side.
+for (const p of PROPS.filter((q) => q.type === 'table')) {
+  const alongZ = (p.ry ?? 0) % 180 !== 0;
+  const off = 1.0;
+  const exits = alongZ ? [{ x: p.x + off, z: p.z }, { x: p.x - off, z: p.z }] : [{ x: p.x, z: p.z + off }, { x: p.x, z: p.z - off }];
+  hide({ type: 'under_table', room: p.room, x: p.x, y: EYE.under_table, z: p.z, cover: 0.6, checkPriority: 0.6, exits, enterTime: 0.7 });
+}
+hide({ type: 'coffin', room: 'party4', x: 4.0, y: EYE.coffin, z: 48.4, cover: 1, checkPriority: 0.15, exits: [{ x: 5.0, z: 48.4 }] });
+hide({ type: 'desk', room: 'office', x: 25, y: EYE.desk, z: 49.3, cover: 0.7, checkPriority: 0.5, exits: [{ x: 25, z: 50.5 }] });
+for (let i = 0; i < 3; i++) hide({ type: 'stall', room: 'men', x: 43 + i * 2, y: EYE.stall, z: 33.0, cover: 0.75, checkPriority: 0.7, exits: [{ x: 43 + i * 2, z: 34.6 }] });
+for (let i = 0; i < 3; i++) hide({ type: 'stall', room: 'women', x: 40.25 + i * 2.5, y: EYE.stall, z: 38.0, cover: 0.75, checkPriority: 0.7, exits: [{ x: 40.25 + i * 2.5, z: 39.7 }] });
+hide({ type: 'freezer', room: 'freezer', x: 50.3, y: EYE.freezer, z: 54.3, cover: 0.85, checkPriority: 0.6, capacity: 2, hazard: 'cold', exits: [{ x: 49.2, z: 53.5 }] });
+hide({ type: 'chest', room: 'cove', x: 5.2, y: 0.4 + EYE.chest, z: 19.4, cover: 0.95, checkPriority: 0.4, exits: [{ x: 6.4, z: 18.6 }] });
+hide({ type: 'curtain', room: 'stage', x: 66.6, y: 1.0 + EYE.curtain, z: 11.4, cover: 0.8, checkPriority: 0.5, exits: [{ x: 65.2, z: 11.6 }] });
+hide({ type: 'curtain', room: 'stage', x: 66.6, y: 1.0 + EYE.curtain, z: 18.6, cover: 0.8, checkPriority: 0.5, exits: [{ x: 65.2, z: 18.4 }] });
+hide({ type: 'costume_rack', room: 'backstage', x: 66.8, y: EYE.costume_rack, z: 31, cover: 0.8, checkPriority: 0.6, exits: [{ x: 65.6, z: 31 }] });
+hide({ type: 'cabinet', room: 'lobby', x: 40, y: EYE.cabinet, z: 7.6, cover: 0.7, checkPriority: 0.5, exits: [{ x: 40, z: 8.6 }] });
+hide({ type: 'closet', room: 'supply', x: 32, y: EYE.closet, z: 55.3, cover: 0.85, checkPriority: 0.8, exits: [{ x: 32, z: 54.2 }] });
+hide({ type: 'sheet', room: 'parts', x: 77.5, y: EYE.sheet, z: 32.8, cover: 0.7, checkPriority: 0.5, exits: [{ x: 77.5, z: 34.2 }] });
+hide({ type: 'cart', room: 'utility', x: 48, y: EYE.cart, z: 58.2, cover: 0.75, checkPriority: 0.6, exits: [{ x: 46.8, z: 57.5 }] });
+hide({ type: 'cabinet', room: 'kitchen', x: 44, y: EYE.cabinet, z: 44.6, cover: 0.8, checkPriority: 0.5, exits: [{ x: 44, z: 45.8 }] });
+hide({ type: 'stealth_alcove', room: 'bBoiler', x: 49.5, y: BASEMENT_Y + EYE.stealth_alcove, z: 58.5, cover: 0.7, checkPriority: 0.4, hazard: 'heat', exits: [{ x: 48.6, z: 60 }] });
+hide({ type: 'stealth_alcove', room: 'bServer', x: 61, y: BASEMENT_Y + EYE.stealth_alcove, z: 61.5, cover: 0.55, checkPriority: 0.4, exits: [{ x: 60, z: 62.5 }] });
+hide({ type: 'cabinet', room: 'bBreaker', x: 29.4, y: BASEMENT_Y + EYE.cabinet, z: 63.2, cover: 0.6, checkPriority: 0.5, exits: [{ x: 28.4, z: 63 }] });

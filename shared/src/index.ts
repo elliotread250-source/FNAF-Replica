@@ -29,3 +29,6 @@ export * from './world';
 export * from './frConfig';
 export * from './sim/fr/collision';
 export * from './sim/fr/controller';
+export * from './sim/fr/nav';
+export * from './sim/fr/sim';
+export * from './sim/fr/ai';

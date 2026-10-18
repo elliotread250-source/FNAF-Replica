@@ -179,6 +179,44 @@ export interface SpawnDef {
   yaw: number;
 }
 
+export type HideType =
+  | 'locker'
+  | 'under_table'
+  | 'closet'
+  | 'stall'
+  | 'cabinet'
+  | 'chest'
+  | 'ball_pit'
+  | 'curtain'
+  | 'costume_rack'
+  | 'freezer'
+  | 'cart'
+  | 'coffin'
+  | 'booth'
+  | 'stealth_alcove'
+  | 'sheet'
+  | 'desk';
+
+export interface HidingSpotDef {
+  id: number;
+  type: HideType;
+  room: string;
+  /** Where the hidden player's eye sits. */
+  x: number;
+  y: number;
+  z: number;
+  /** Yaw the hidden player faces (looking out of the spot). */
+  yaw: number;
+  capacity: 1 | 2;
+  /** 0..1: how well it hides. */
+  cover: number;
+  enterTime: number;
+  checkPriority: number;
+  /** Where you pop out (feet positions). The first is the default. */
+  exits: { x: number; z: number }[];
+  hazard: 'none' | 'cold' | 'heat' | 'breath';
+}
+
 export interface AudioZone {
   room: string;
   reverb: 'small' | 'hall' | 'big' | 'tunnel' | 'tile' | 'none';
@@ -210,6 +248,7 @@ export interface Level {
   lights: LightDef[];
   interactables: InteractableDef[];
   spawns: SpawnDef[];
+  hidingSpots: HidingSpotDef[];
   audio: AudioZone[];
   bounds: { x1: number; z1: number; x2: number; z2: number };
   /** room id -> adjacent room ids through openings (for graph tests and the AI). */

@@ -70,4 +70,69 @@ export const FR = {
   },
 
   flashlight: { DRAIN: 1.2, FOCUS_MULT: 3, BATTERY_PACK: 50, RANGE: 22, CONE: 28, FOCUS_RANGE: 35, FOCUS_CONE: 12 },
+
+  /** Values at aggression 10 and 20; below 10 they extrapolate linearly toward 0 (see aggr()). */
+  ai: {
+    PATROL_SPEED: [1.6, 2.4] as Pair,
+    CHASE_SPEED: [4.4, 5.4] as Pair,
+    DECISION_INTERVAL: [6, 2] as Pair,
+    HUNT_CHANCE: [0.3, 0.75] as Pair,
+    VISION_DARK: [8, 12] as Pair,
+    VISION_LIT: [18, 26] as Pair,
+    DETECT_TIME: [1.4, 0.6] as Pair,
+    HEARING_MULT: [1.0, 1.4] as Pair,
+    SEARCH_DURATION: [20, 40] as Pair,
+    SPOTS_PER_SEARCH: [2, 4] as Pair,
+    CONE_H: 100,
+    CONE_V: 70,
+    NOTICE_THRESHOLD: 0.3,
+    DETECT_DECAY: 0.5,
+    INSTANT_SPOT_RANGE: 1.5,
+    CATCH_RANGE: 1.0,
+    CATCH_ARC: 90,
+    SATISFIED: [4, 8] as Pair,
+    CHECK_WARNING: 0.8,
+    CHECK_TIME: [1.2, 2.0] as Pair,
+    CHECK_HEADSTART: 1.0,
+    LOST_SIGHT_TO_SEARCH: 3,
+    PREDICT_AFTER_LOST: 2,
+    INVESTIGATE_LOOK: [3, 6] as Pair,
+    PATROL_PAUSE: [2, 6] as Pair,
+    DOOR_OPEN_TIME: 0.9,
+    ANTI_CAMP_SECONDS: 90,
+    SPAWN_PROTECTION_N1: 90,
+    SPAWN_PROTECTION: 45,
+    PERCEPTION_HZ: 10,
+    REPLAN_MIN: 0.25,
+    BONNIE_RELOCATE_AFTER: 20,
+    BONNIE_CONE_H: 120,
+    PLAYER_VIEW_RANGE: 30,
+    PLAYER_FOV_H: 100,
+    EYES_VISIBLE_DARK: 10,
+    AWAY_AFTER_CATCH: 20,
+  },
+
+  /** Aggression per night at four players (Part 5.11) and hourly bumps. */
+  nights: {
+    AGGRESSION: {
+      1: { bonnie: 3, chica: 2 },
+      2: { bonnie: 6, chica: 5, foxy: 3 },
+      3: { bonnie: 8, chica: 8, foxy: 6, freddy: 4 },
+      4: { bonnie: 11, chica: 11, foxy: 10, freddy: 8 },
+      5: { bonnie: 14, chica: 14, foxy: 13, freddy: 12 },
+      6: { bonnie: 18, chica: 18, foxy: 18, freddy: 16 },
+    } as Record<number, Record<string, number>>,
+    HOURLY: { 2: { bonnie: 1 }, 3: { bonnie: 1, chica: 1, foxy: 1 }, 4: { bonnie: 1, chica: 1, foxy: 1 }, 5: { freddy: 2 } } as Record<number, Record<string, number>>,
+    HOUR_SECONDS: 150,
+    FAST_HOUR_SECONDS: 10,
+  },
+
+  scaling: { AGGRESSION: { 1: 0.6, 2: 0.75, 3: 0.9, 4: 1.0 } as Record<number, number> },
 } as const;
+
+type Pair = [number, number];
+
+/** Interpolate a [at10, at20] pair at an aggression level 0..20 (extrapolating linearly below 10). */
+export function aggr(p: readonly [number, number], a: number): number {
+  return p[0] + ((p[1] - p[0]) * (a - 10)) / 10;
+}

@@ -1,5 +1,5 @@
 import { createRng, next } from '../rng';
-import { INTERACTABLES, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
+import { HIDE_SPECS, INTERACTABLES, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
 import type {
   AudioZone,
   Box,
@@ -229,6 +229,8 @@ export function buildLevel(): Level {
         if (!e) throw new Error(`opening ${idx} (${o.axis}=${o.line} ${o.from}..${o.to}) is not on a wall at ${p}`);
         e.opening = idx;
         link(e.lo, e.hi);
+        // Archways rise to half a metre under the lower of the two ceilings.
+        if (o.kind === 'arch' && e.lo && e.hi) o.head = Math.max(o.head, Math.min(roomById[e.lo].ceilH, roomById[e.hi].ceilH) - 0.5);
       }
     });
 
@@ -317,6 +319,14 @@ export function buildLevel(): Level {
     lights,
     interactables: INTERACTABLES,
     spawns: SPAWNS,
+    hidingSpots: HIDE_SPECS.map((h, id) => ({
+      ...h,
+      id,
+      capacity: h.capacity ?? 1,
+      enterTime: h.enterTime ?? 0.9,
+      hazard: h.hazard ?? 'none',
+      yaw: Math.atan2(-(h.exits[0].x - h.x), -(h.exits[0].z - h.z)),
+    })),
     audio,
     bounds: { x1: bounds.x1, z1: bounds.z1, x2: bounds.x2, z2: bounds.z2 },
     links: Object.fromEntries([...links].map(([k, v]) => [k, [...v]])),

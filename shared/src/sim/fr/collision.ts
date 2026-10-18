@@ -113,6 +113,26 @@ export class CollisionWorld {
     return best;
   }
 
+  /** How many walls (and closed doors) a straight line passes through, for sound attenuation. Capped at 3. */
+  countBetween(ax: number, ay: number, az: number, bx: number, by: number, bz: number): { walls: number; doors: number } {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dy, dz);
+    const out = { walls: 0, doors: 0 };
+    if (len < 1e-3) return out;
+    const near = this.query(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), []);
+    for (const c of near) {
+      if (!this.isActive(c) || c.kind === 'prop' || c.kind === 'step') continue;
+      const t = rayBox(ax, ay, az, dx / len, dy / len, dz / len, c);
+      if (t < 0 || t > len) continue;
+      if (c.kind === 'door') out.doors++;
+      else out.walls++;
+      if (out.walls + out.doors >= 3) break;
+    }
+    return out;
+  }
+
   /** Line of sight between two points, ignoring glass if asked. */
   clearLine(ax: number, ay: number, az: number, bx: number, by: number, bz: number, glassBlocks = false): boolean {
     const dx = bx - ax;

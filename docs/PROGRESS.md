@@ -9,7 +9,7 @@ the milestones of Part 12 of the free-roam prompt. The old modes stay until thei
 - [x] FR 2: Railway pipeline verified (project `arcade`, service `fnaf-replica`); see docs/DEPLOY.md for the GitHub App note
 - [~] FR 3: Walkable building: level data (39 rooms, ground + basement), generator, `docs/map.svg`, collision, first-person controller (walk, sprint, crouch, crawl, lean, jump, vault, steps, stairs), doors, flashlight, zone lighting and power model, footsteps and ambience, Day Shift and a solo Night Shift preview. Remaining for M3: ladders, more props and posters
 - [ ] FR 4: Accounts extension (stats columns, collectibles, photos) and the live 3D title scene
-- [ ] FR 5: Shared sim + first threat (server-authoritative loop, navmesh, AI framework, Bonnie, hiding, catch)
+- [~] FR 5: Shared sim + first threat: `FrSim` (players, doors, power, noise, clock, hiding, catch, downed/revive/ghost, solo free get-up), 0.5 m walk grid with A* and doors, AI framework (sight with light/posture/motion/exposure, hearing through walls, PATROL/INVESTIGATE/CHASE/SEARCH/CHECK/SATISFIED, check warning and head start, anti-recatch), Bonnie with relocation, 34 hiding spots with view overlays, jumpscare and downed state, F9 debug overlay; 15 AI tests. Runs locally for solo play; it moves to the server in FR 6
 - [ ] FR 6: Multiplayer (prediction, interpolation, guard models, revives, ghosts)
 - [ ] FR 7: Objectives and the full core night (power grid, breaker puzzle, fuses, music box, cupcakes, remaining animatronics, Nights 1 to 6, Director)
 - [ ] FR 8: Proximity voice and walkies
