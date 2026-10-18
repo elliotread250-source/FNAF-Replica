@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CollisionWorld, FR, getLevel, newBody, stepBody, type Body, type Input, type Level } from '../src';
+import { CollisionWorld, FR, getLevel, newBody, stepBody, type Body, type FrInput, type Level } from '../src';
 
 const level: Level = getLevel();
 
@@ -9,10 +9,10 @@ function world(openAll = true): CollisionWorld {
   return w;
 }
 
-const idle: Input = { fwd: 0, strafe: 0, yaw: 0, pitch: 0, sprint: false, stance: 0, jump: false };
+const idle: FrInput = { fwd: 0, strafe: 0, yaw: 0, pitch: 0, sprint: false, stance: 0, jump: false };
 const DT = 1 / FR.TICK_HZ;
 
-function run(b: Body, w: CollisionWorld, inp: Partial<Input>, seconds: number): void {
+function run(b: Body, w: CollisionWorld, inp: Partial<FrInput>, seconds: number): void {
   const n = Math.round(seconds / DT);
   for (let i = 0; i < n; i++) stepBody(b, { ...idle, yaw: b.yaw, stance: b.stance, ...inp }, DT, w);
 }
@@ -31,7 +31,10 @@ describe('level', () => {
     const queue = ['staff'];
     while (queue.length) {
       const r = queue.pop() as string;
-      for (const n of level.links[r] ?? []) if (!seen.has(n)) (seen.add(n), queue.push(n));
+      for (const n of level.links[r] ?? []) if (!seen.has(n)) {
+          seen.add(n);
+          queue.push(n);
+        }
     }
     const missing = level.rooms.filter((r) => !seen.has(r.id)).map((r) => r.id);
     expect(missing).toEqual([]);

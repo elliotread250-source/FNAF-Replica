@@ -3,7 +3,7 @@
 // those walls. See docs/map.svg for the rendered plan and docs/DECISIONS.md for where this departs from the
 // hand-written coordinates in the prompt.
 
-import type { CircuitId, DoorDef, InteractableDef, OpeningDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
+import type { CircuitId, DoorDef, InteractableDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
 
 export const BASEMENT_Y = -4.5;
 
@@ -157,11 +157,11 @@ export const SPAWNS: SpawnDef[] = [
   { id: 'p4', x: 6.5, z: 61.5, y: 0, yaw: Math.PI / 2 },
 ];
 
-const sw = (circuit: CircuitId, room: string, x: number, z: number, ry: number): InteractableDef => ({
+const sw = (circuit: CircuitId, room: string, x: number, z: number, ry: number, y = 1.3): InteractableDef => ({
   id: `switch:${circuit}`,
   type: 'zoneSwitch',
   x,
-  y: 1.3,
+  y,
   z,
   ry,
   room,
@@ -188,11 +188,11 @@ export const INTERACTABLES: InteractableDef[] = [
   sw('parts', 'parts', 70, 35.9, 180),
   sw('manager', 'manager', 52.1, 52, 90),
   sw('dock', 'dock', 66.1, 52, 90),
-  sw('basement', 'bHall', 12, 64.1 , 0),
-  sw('server', 'bServer', 54.1, 61, 90),
-  sw('boiler', 'bBoiler', 40.1, 56, 90),
+  sw('basement', 'bHall', 12, 64.1, 0, 1.3 + BASEMENT_Y),
+  sw('server', 'bServer', 54.1, 61, 90, 1.3 + BASEMENT_Y),
+  sw('boiler', 'bBoiler', 40.1, 56, 90, 1.3 + BASEMENT_Y),
   { id: 'honk', type: 'honk', x: 24.5, y: 1.9, z: 48.15, ry: 0, room: 'office', label: 'Honk' },
-].map((i) => (i.type === 'zoneSwitch' && ['basement', 'server', 'boiler'].includes(i.circuit ?? '') ? { ...i, y: i.y + BASEMENT_Y } : i));
+];
 
 // ---- Props ---------------------------------------------------------------------------------------------
 

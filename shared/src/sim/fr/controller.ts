@@ -36,7 +36,7 @@ export interface Body {
   forcedCrawl: boolean;
 }
 
-export interface Input {
+export interface FrInput {
   /** -1..1 */
   fwd: number;
   /** -1..1, +1 is right. */
@@ -112,7 +112,7 @@ export function moveSpeed(b: Body, wantSprint: boolean): number {
 const scratch: BodyEvent[] = [];
 
 /** Advance one body by dt seconds. Returns the events (footsteps, landings) it produced; the array is reused. */
-export function stepBody(b: Body, inp: Input, dt: number, world: CollisionWorld): BodyEvent[] {
+export function stepBody(b: Body, inp: FrInput, dt: number, world: CollisionWorld): BodyEvent[] {
   scratch.length = 0;
   b.yaw = inp.yaw;
   b.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch));
