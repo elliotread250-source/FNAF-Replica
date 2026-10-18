@@ -4,6 +4,10 @@ import {
   FrSim,
   IDLE_CMD,
   eyeHeight,
+  makeAgent,
+  stepBody,
+  type FrSnap,
+  type FrStart,
   type Agent,
   type CircuitId,
   type FrAct,
@@ -20,6 +24,9 @@ import { WorldRender, type PowerView } from '../render/world/world';
 import { volumetricCone } from '../render/fx/effects';
 import { buildCharacter, type CharacterRig } from '../render/characters/build';
 import { Jumpscare } from '../render/scenes/jumpscare';
+import { buildGuard, type GuardRig } from '../render/characters/guard';
+import { getSocket } from '../net/socket';
+import type { NightEnd } from './types';
 import { audio } from '../audio/engine';
 import { store } from '../store';
 import { h } from '../ui/dom';
@@ -75,7 +82,16 @@ const HIDE_VERB: Record<string, string> = {
 
 const ME = 'me';
 
-type Target = { kind: 'door'; door: FrDoorDef } | { kind: 'item'; item: InteractableDef } | { kind: 'hide'; spot: HidingSpotDef } | null;
+type Target = { kind: 'door'; door: FrDoorDef } | { kind: 'item'; item: InteractableDef } | { kind: 'hide'; spot: HidingSpotDef } | { kind: 'revive'; pid: string } | null;
+
+interface RemoteView {
+  rig: GuardRig;
+  name: THREE.Sprite;
+  beam: THREE.Mesh;
+  prev: { x: number; y: number; z: number; yaw: number; h: number };
+  cur: { x: number; y: number; z: number; yaw: number; h: number };
+  bob: number;
+}
 
 interface AgentView {
   rig: CharacterRig;
@@ -137,9 +153,20 @@ export class FreeRoam {
   private chaseLoop = false;
   /** Called when the player leaves (Esc menu, end card). */
   onExit: () => void = () => {};
+  /** Called with the server's paycheck at the end of a networked night. */
+  onNightEnd: (e: NightEnd) => void = () => {};
+  readonly myId: string;
+  private readonly net: FrStart | null;
+  private seq = 0;
+  private history: { seq: number; cmd: FrCmd }[] = [];
+  private remotes = new Map<string, RemoteView>();
+  private snapAt = 0;
+  private snapGap = 1 / FR.SNAPSHOT_HZ;
+  private pendingEnd: NightEnd | null = null;
   /** Test and debug access, only wired when explicitly asked for. */
   readonly debug = {
     teleport: (x: number, z: number, y = 0, yaw = this.yaw, pitch = 0) => {
+      if (this.net) getSocket().emit('fr:test', { x, y, z });
       Object.assign(this.me.body, { x, z, y, vy: 0, grounded: true, vault: 0 });
       this.prev = { x, y, z };
       this.yaw = yaw;
@@ -166,6 +193,8 @@ export class FreeRoam {
       this.ui.pause.style.display = 'none';
     },
     act: (a: FrAct) => (this.actQueued = a),
+    remotes: () => [...this.remotes.entries()].filter(([, v]) => v.rig.root.visible).map(([id]) => id),
+    powerState: () => ({ main: this.sim.power.main, circuits: [...this.sim.power.circuits] }),
     agent: (id: string, x: number, z: number, y = 0, yaw = 0) => {
       const a = this.sim.agents.find((q) => q.id === id);
       if (a) Object.assign(a, { x, z, y, yaw });
@@ -176,10 +205,17 @@ export class FreeRoam {
     readonly mode: FreeRoamMode,
     ui: HTMLElement,
     night = 1,
+    net: FrStart | null = null,
   ) {
-    const seed = (Date.now() & 0xffff) ^ 0x5eed;
-    this.sim = new FrSim({ seed, night, mode, playerCount: 1 });
-    this.me = this.sim.addPlayer(ME, store.me?.user.displayName ?? 'Guard');
+    this.net = net;
+    const seed = net ? net.seed : (Date.now() & 0xffff) ^ 0x5eed;
+    this.sim = new FrSim({ seed, night: net ? net.night : night, mode, playerCount: net ? net.players.length : 1 });
+    this.myId = net ? net.you : ME;
+    if (net) {
+      // Same spawn order as the server: roster order.
+      for (const p of net.players) this.sim.addPlayer(p.id, p.name);
+      this.me = this.sim.players.get(net.you) as FrPlayer;
+    } else this.me = this.sim.addPlayer(ME, store.me?.user.displayName ?? 'Guard');
     this.yaw = this.me.body.yaw;
     this.flashOn = mode === 'night';
     const sim = this.sim;
@@ -204,8 +240,16 @@ export class FreeRoam {
       })
       .catch(() => {});
     this.prev = { x: this.me.body.x, y: this.me.body.y, z: this.me.body.z };
-    // The first sim tick spawns the night's animatronics.
-    this.sim.tick();
+    if (net) {
+      const sock = getSocket();
+      const onSnap = (snap: FrSnap) => this.onSnap(snap);
+      sock.on('fr:snap', onSnap);
+      this.cleanup.push(() => sock.off('fr:snap', onSnap));
+      for (const p of net.players) if (p.id !== net.you) this.remoteView(p.id, p.name, p.equipped);
+    } else {
+      // The first sim tick spawns the night's animatronics.
+      this.sim.tick();
+    }
   }
 
   private buildFlashlight(shadowSize: number): void {
@@ -368,7 +412,8 @@ export class FreeRoam {
     const pz = this.prev.z + (b.z - this.prev.z) * a;
     this.syncDoors();
     this.placeCamera(px, py, pz, dt);
-    this.updateAgents(a, dt);
+    this.updateAgents(this.net ? Math.min(1.2, (performance.now() / 1000 - this.snapAt) / Math.max(0.02, this.snapGap)) : a, dt);
+    if (this.net) this.updateRemotes(dt);
     this.updateWorld(dt);
     this.updateHud(dt);
     this.shake = Math.max(0, this.shake - dt * 2);
@@ -381,13 +426,17 @@ export class FreeRoam {
   }
 
   private stepSim(dt: number): void {
+    if (this.net) {
+      this.stepNet(dt);
+      return;
+    }
     const step = this.sim.dt;
     this.acc += dt;
     let guard = 0;
     while (this.acc >= step && guard++ < 5) {
       this.prev = { x: this.me.body.x, y: this.me.body.y, z: this.me.body.z };
       for (const v of this.agents.values()) v.prev = { ...v.cur };
-      this.sim.setCmd(ME, this.buildCmd());
+      this.sim.setCmd(this.myId, this.buildCmd());
       const events = this.sim.tick();
       for (const e of events) this.onEvent(e);
       for (const ag of this.sim.agents) {
@@ -397,6 +446,176 @@ export class FreeRoam {
       this.acc -= step;
     }
     if (guard >= 5) this.acc = 0;
+  }
+
+  // ---- Networked play ----------------------------------------------------------------------------
+
+  /** Predict our own movement locally, send the command, keep it until the server acknowledges it. */
+  private stepNet(dt: number): void {
+    const step = this.sim.dt;
+    this.acc += dt;
+    let guard = 0;
+    while (this.acc >= step && guard++ < 5) {
+      this.prev = { x: this.me.body.x, y: this.me.body.y, z: this.me.body.z };
+      const cmd = this.buildCmd();
+      this.seq++;
+      getSocket().emit('fr:cmd', { seq: this.seq, cmd });
+      this.history.push({ seq: this.seq, cmd: { ...cmd, act: undefined } });
+      if (this.history.length > 120) this.history.shift();
+      this.predict(cmd, step, true);
+      this.acc -= step;
+    }
+    if (guard >= 5) this.acc = 0;
+  }
+
+  private predict(cmd: FrCmd, dt: number, sounds: boolean): void {
+    const me = this.me;
+    if (me.hidden || this.sim.over) return;
+    if (me.downed) {
+      me.body.forcedCrawl = true;
+      stepBody(me.body, { ...cmd, fwd: cmd.fwd * 0.43, strafe: cmd.strafe * 0.43, sprint: false, stance: 2, jump: false }, dt, this.sim.world);
+      return;
+    }
+    me.body.forcedCrawl = false;
+    let saved: Float32Array | null = null;
+    if (me.ghost) {
+      saved = Float32Array.from(this.sim.world.doorOpen);
+      this.sim.world.doorOpen.fill(1);
+    }
+    const ev = stepBody(me.body, cmd, dt, this.sim.world);
+    if (saved) this.sim.world.doorOpen.set(saved);
+    if (sounds) for (const e of ev) this.playBodySound(e.type, e.radius, 1);
+  }
+
+  private playBodySound(type: string, radius: number, gain: number): void {
+    if (type === 'step') audio.play('step_light', { gain: gain * (radius > 10 ? 0.5 : radius > 3 ? 0.28 : 0.12), rate: 0.9 + Math.random() * 0.2 });
+    else if (type === 'land') audio.play('step_heavy', { gain: gain * 0.4 });
+    else if (type === 'vault') audio.play('whoosh', { gain: gain * 0.3 });
+  }
+
+  private onSnap(s: FrSnap): void {
+    const sim = this.sim;
+    const now = performance.now() / 1000;
+    if (this.snapAt) this.snapGap = this.snapGap * 0.8 + Math.min(0.2, now - this.snapAt) * 0.2;
+    this.snapAt = now;
+    sim.time = s.time;
+    sim.hour = s.hour;
+    sim.tickN = s.tick;
+    sim.world.doorOpen.set(s.doors);
+    sim.doorTarget.set(s.targets);
+    sim.power.main = s.power.main;
+    sim.power.circuits = new Set(s.power.circuits as CircuitId[]);
+    // Our own state: take the server's word, then replay what it hasn't seen yet.
+    const me = this.me;
+    const m = s.me;
+    me.battery = m.battery;
+    me.breath = m.breath;
+    me.hidden = m.hidden;
+    me.downed = m.downed;
+    me.bleed = m.bleed;
+    me.ghost = m.ghost;
+    me.revives = m.revives;
+    me.reviveProgress = m.reviveProgress;
+    const before = { x: me.body.x, y: me.body.y, z: me.body.z };
+    Object.assign(me.body, m.body);
+    this.history = this.history.filter((h) => h.seq > s.ack);
+    for (const h of this.history) this.predict(h.cmd, sim.dt, false);
+    // Small corrections are smoothed by shifting the interpolation origin; big ones snap.
+    const err = Math.hypot(me.body.x - before.x, me.body.z - before.z);
+    if (err > 0.01 && err < 1.5) {
+      this.prev.x += me.body.x - before.x;
+      this.prev.z += me.body.z - before.z;
+      this.prev.y += me.body.y - before.y;
+    }
+    // Other players.
+    const seen = new Set<string>();
+    for (const p of s.players) {
+      seen.add(p.id);
+      let fp = sim.players.get(p.id);
+      if (!fp) fp = sim.addPlayer(p.id, p.id);
+      Object.assign(fp.body, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, stance: p.st, height: p.h, speed: p.sp });
+      fp.flashOn = p.f;
+      fp.downed = p.d;
+      fp.ghost = p.g;
+      fp.reviveProgress = p.rp;
+      fp.hidden = p.hid >= 0 ? { spot: p.hid, phase: 'in', t: 0, exit: 0 } : null;
+      const v = this.remoteView(p.id, fp.name, {});
+      v.prev = { ...v.cur };
+      v.cur = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, h: p.h };
+      v.rig.root.visible = !fp.hidden;
+    }
+    for (const [id, v] of this.remotes) if (!seen.has(id)) v.rig.root.visible = false;
+    // Animatronics we're allowed to know about.
+    const keep: typeof sim.agents = [];
+    for (const a of s.agents) {
+      let ag = sim.agents.find((q) => q.id === a.id);
+      if (!ag) ag = makeAgent(sim, a.id, 0, 0);
+      Object.assign(ag, { x: a.x, y: a.y, z: a.z, yaw: a.yaw, state: a.s, anim: a.a, speed: a.sp });
+      keep.push(ag);
+      const v = this.agentView(ag);
+      v.prev = { ...v.cur };
+      v.cur = { x: a.x, y: a.y, z: a.z, yaw: a.yaw };
+    }
+    sim.agents.length = 0;
+    sim.agents.push(...keep);
+    for (const [id, v] of this.agents) v.rig.root.visible = keep.some((a) => a.id === id);
+    for (const e of s.ev) {
+      if (e.t === 'step') {
+        const fp = sim.players.get(e.pid);
+        if (fp) this.playBodySound('step', e.r, this.gainAt(fp.body.x, fp.body.y, fp.body.z));
+        continue;
+      }
+      this.onEvent(e);
+    }
+  }
+
+  private remoteView(id: string, name: string, equipped: Record<string, string>): RemoteView {
+    let v = this.remotes.get(id);
+    if (v) return v;
+    const rig = buildGuard(equipped);
+    this.scene.add(rig.root);
+    const label = nameSprite(name);
+    label.position.set(0, 2.15, 0);
+    rig.root.add(label);
+    const beam = volumetricCone('#fff2d8', 9, 1.9, 0.06);
+    beam.rotation.x = Math.PI / 2;
+    beam.position.set(0.25, 1.35, -0.2);
+    rig.root.add(beam);
+    const p = { x: 0, y: -100, z: 0, yaw: 0, h: FR.player.HEIGHT_STAND };
+    v = { rig, name: label, beam, prev: { ...p }, cur: { ...p }, bob: 0 };
+    this.remotes.set(id, v);
+    return v;
+  }
+
+  private updateRemotes(dt: number): void {
+    const a = this.snapAt ? Math.min(1.2, (performance.now() / 1000 - this.snapAt) / Math.max(0.02, this.snapGap)) : 1;
+    for (const [id, v] of this.remotes) {
+      const fp = this.sim.players.get(id);
+      if (!fp) continue;
+      const x = v.prev.x + (v.cur.x - v.prev.x) * a;
+      const y = v.prev.y + (v.cur.y - v.prev.y) * a;
+      const z = v.prev.z + (v.cur.z - v.prev.z) * a;
+      let dy = v.cur.yaw - v.prev.yaw;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      const yaw = v.prev.yaw + dy * Math.min(1, a);
+      const moving = fp.body.speed > 0.3;
+      v.bob += dt * fp.body.speed * 2.4;
+      const r = v.rig.root;
+      r.position.set(x, y + (moving ? Math.abs(Math.sin(v.bob)) * 0.04 : 0), z);
+      r.rotation.y = yaw + Math.PI;
+      const h = v.prev.h + (v.cur.h - v.prev.h) * Math.min(1, a);
+      r.scale.set(1, Math.max(0.35, h / FR.player.HEIGHT_STAND), 1);
+      r.rotation.x = fp.downed ? -1.35 : 0;
+      v.beam.visible = fp.flashOn && !fp.downed;
+    }
+  }
+
+  /** Called by the screen when the server's paycheck arrives. */
+  deliverEnd(e: NightEnd): void {
+    this.pendingEnd = e;
+    if (!this.ended) this.endCard(e.result === 'win');
+    setTimeout(() => this.onNightEnd(e), 5000);
   }
 
   private buildCmd(): FrCmd {
@@ -414,6 +633,7 @@ export class FreeRoam {
       jump: active && !hidden && this.jumpQueued,
       flash: this.flashOn,
       breath: hidden && k.has('Space'),
+      hold: k.has('KeyE') && this.target?.kind === 'revive',
       act: this.actQueued ?? undefined,
     };
     this.jumpQueued = false;
@@ -422,7 +642,7 @@ export class FreeRoam {
   }
 
   private onEvent(e: FrEvent): void {
-    const mine = 'pid' in e && e.pid === ME;
+    const mine = 'pid' in e && e.pid === this.myId;
     switch (e.t) {
       case 'door': {
         const d = this.sim.level.doors[e.id];
@@ -687,6 +907,14 @@ export class FreeRoam {
       best = make();
       bestScore = dot;
     };
+    for (const p of this.sim.players.values()) {
+      if (p === this.me || !p.downed) continue;
+      if (Math.hypot(p.body.x - this.me.body.x, p.body.z - this.me.body.z) < 1.6) {
+        bestScore = -1;
+        consider(p.body.x, p.body.y + 0.3, p.body.z, 1, () => ({ kind: 'revive', pid: p.id }), false);
+        if (best) return best;
+      }
+    }
     for (const item of this.sim.level.interactables) consider(item.x, item.y, item.z, 0.6, () => ({ kind: 'item', item }));
     for (const spot of this.sim.level.hidingSpots) {
       const fy = this.sim.level.roomById[spot.room].floorY;
@@ -715,6 +943,11 @@ export class FreeRoam {
       if (t.door.kind === 'shutter') return `[E] ${open ? 'Close' : 'Open'} ${t.door.name}`;
       return `[E] ${open ? 'Close' : 'Open'} ${t.door.name.toLowerCase()}`;
     }
+    if (t.kind === 'revive') {
+      const p = this.sim.players.get(t.pid);
+      const pct = p ? Math.round((p.reviveProgress / FR.player.REVIVE_TIME) * 100) : 0;
+      return `Hold [E] to revive ${p?.name ?? ''}${pct > 0 ? ` ${pct}%` : ''}`;
+    }
     if (t.kind === 'hide') {
       const full = this.sim.spotOccupants(t.spot.id).length >= t.spot.capacity;
       return full ? 'Someone is already in there' : `[E] ${HIDE_VERB[t.spot.type] ?? 'Hide'}`;
@@ -738,6 +971,7 @@ export class FreeRoam {
     }
     const t = this.target;
     if (!t) return;
+    if (t.kind === 'revive') return;
     if (t.kind === 'door') this.actQueued = { type: 'door', id: t.door.id };
     else if (t.kind === 'hide') this.actQueued = { type: 'hide', id: t.spot.id };
     else this.actQueued = { type: 'item', id: t.item.id };
@@ -792,6 +1026,7 @@ export class FreeRoam {
   }
 
   private endCard(won: boolean): void {
+    if (this.ended) return;
     this.ended = true;
     if (document.pointerLockElement) document.exitPointerLock();
     audio.stopLoop('fr_chase', 0.3);
@@ -804,7 +1039,11 @@ export class FreeRoam {
     c.append(
       h('h1', { class: 'title' }, won ? '6 AM' : 'GAME OVER'),
       h('p', null, won ? 'You made it through the night.' : 'The night is over. They found you.'),
-      h('button', { class: 'btn primary', onclick: () => this.onExit() }, 'Back to the title'),
+      h(
+        'button',
+        { class: 'btn primary', onclick: () => (this.pendingEnd ? this.onNightEnd(this.pendingEnd) : this.onExit()) },
+        this.net ? 'Collect your paycheck' : 'Back to the title',
+      ),
     );
     c.style.display = 'flex';
   }
@@ -852,6 +1091,25 @@ export class FreeRoam {
     ctx.fillStyle = '#3a2a1a';
     ctx.fillText(below ? 'BASEMENT' : 'GROUND FLOOR', 8, 14);
   }
+}
+
+function nameSprite(text: string): THREE.Sprite {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 48;
+  const x = c.getContext('2d') as CanvasRenderingContext2D;
+  x.font = '28px VT323, monospace';
+  x.textAlign = 'center';
+  x.fillStyle = 'rgba(0,0,0,0.45)';
+  x.fillRect(0, 6, 256, 36);
+  x.fillStyle = '#f0ead8';
+  x.fillText(text.slice(0, 20), 128, 34);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  s.scale.set(1.1, 0.21, 1);
+  s.renderOrder = 10;
+  return s;
 }
 
 declare global {

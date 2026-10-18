@@ -5,7 +5,7 @@ import { titleBackdrop, disclaimer } from './title';
 import { emitAck, getSocket } from '../../net/socket';
 import type { LobbySummary } from '@fnaf/shared';
 
-type Mode = 'nightshift' | 'classic' | 'showtime';
+type Mode = 'freeroam' | 'nightshift' | 'classic' | 'showtime';
 
 register('play', (root) => {
   titleBackdrop(0.35);
@@ -14,7 +14,7 @@ register('play', (root) => {
     go('lobby');
     return;
   }
-  let mode: Mode = 'nightshift';
+  let mode: Mode = 'freeroam';
   let night = 1;
   let pub = false;
   const list = h('div', { class: 'col' });
@@ -78,11 +78,15 @@ register('play', (root) => {
           h(
             'div',
             { class: 'tabs' },
-            (['nightshift', 'classic', 'showtime'] as Mode[]).map((m) =>
-              h('button', { class: m === mode ? 'on' : '', onclick: () => ((mode = m), render()) }, m === 'nightshift' ? 'Night Shift (co-op)' : m === 'classic' ? 'Classic Office (solo)' : 'Showtime (versus)'),
+            (['freeroam', 'nightshift', 'classic', 'showtime'] as Mode[]).map((m) =>
+              h(
+                'button',
+                { class: m === mode ? 'on' : '', onclick: () => ((mode = m), render()) },
+                m === 'freeroam' ? 'Night Shift (Free Roam)' : m === 'nightshift' ? 'Four Stations (co-op)' : m === 'classic' ? 'Classic Office (solo)' : 'Showtime (versus)',
+              ),
             ),
           ),
-          mode === 'nightshift' ? h('div', { class: 'dim' }, 'Playing alone? Try Classic Office, the way it began.') : null,
+          mode === 'freeroam' ? h('div', { class: 'dim' }, 'Walk the whole pizzeria with up to three friends. Restore the power, hide, survive to 6 AM.') : mode === 'nightshift' ? h('div', { class: 'dim' }, 'Playing alone? Try Classic Office, the way it began.') : null,
           h(
             'div',
             { class: 'row', style: 'margin:10px 0' },

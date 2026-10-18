@@ -30,6 +30,7 @@ export default defineConfig({
           SESSION_SECRET: 'e2e-secret-e2e-secret-e2e-secret',
           FAST_NIGHT: '1',
           TEST_SEED: '1234',
+          TEST_HOOKS: '1',
           LOG_LEVEL: 'warn',
         },
       },

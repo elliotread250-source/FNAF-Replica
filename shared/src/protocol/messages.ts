@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { FrCmdMsgZ } from './fr';
 
 export const StationIdZ = z.enum(['office', 'solo', 'west', 'east', 'south', 'control']);
-export const ModeZ = z.enum(['classic', 'nightshift', 'showtime']);
+export const ModeZ = z.enum(['classic', 'nightshift', 'showtime', 'freeroam']);
 const NodeZ = z.string().min(1).max(32);
 const DoorZ = z.string().min(1).max(16);
 const SystemZ = z.string().regex(/^(cameras|audio|ventilation|power|doors_[a-z]+|all)$/);
@@ -69,6 +70,9 @@ export const C2S = {
   'voice:speaking': z.object({ on: z.boolean() }),
   resume: z.object({ lobbyCode: z.string().max(8), lastAckTick: z.number().int().min(0) }),
   'ping:clock': z.object({ t0: z.number() }),
+  'fr:cmd': FrCmdMsgZ,
+  // Test hooks only (TEST_HOOKS=1, never in production): move yourself on the server.
+  'fr:test': z.object({ x: z.number().finite(), y: z.number().finite(), z: z.number().finite() }),
 } as const;
 
 export type C2SName = keyof typeof C2S;
@@ -96,7 +100,7 @@ export interface LobbyPlayer {
 export interface LobbyState {
   code: string;
   hostId: string;
-  mode: 'classic' | 'nightshift' | 'showtime';
+  mode: 'classic' | 'nightshift' | 'showtime' | 'freeroam';
   night: number;
   customAi: { freddy: number; bonnie: number; chica: number; foxy: number };
   puppet: number;

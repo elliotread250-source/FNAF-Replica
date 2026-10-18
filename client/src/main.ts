@@ -14,10 +14,12 @@ import { go, startLoop, currentScreen } from './app';
 import { store } from './store';
 import { getSocket } from './net/socket';
 import { deliverNightEnd } from './ui/screens/game';
+import { deliverFrEnd } from './ui/screens/freeroam';
 import { startVoice } from './net/voice';
 import { getRenderer } from './render/renderer';
 import { h } from './ui/dom';
 import type { NightEnd, NightStart } from './game/types';
+import type { FrStart } from '@fnaf/shared';
 
 function noiseOverlay(): void {
   const c = document.createElement('canvas');
@@ -39,6 +41,14 @@ function noiseOverlay(): void {
     shift = (shift + 37) % 256;
     el.style.backgroundPosition = `${shift}px ${(shift * 7) % 256}px`;
   }, 80);
+}
+
+function wireNight(s: ReturnType<typeof getSocket>): void {
+  s.on('night:start', (start: NightStart) => go('game', { start }));
+  s.on('fr:start', (start: FrStart) => {
+    if (currentScreen() !== 'freeroam') go('freeroam', { mode: 'night', net: start });
+  });
+  s.on('night:end', (e: NightEnd) => (e.mode === 'freeroam' ? deliverFrEnd(e) : deliverNightEnd(e)));
 }
 
 async function boot(): Promise<void> {
@@ -70,16 +80,14 @@ async function boot(): Promise<void> {
 
   if (store.me) {
     const s = getSocket();
-    s.on('night:start', (start: NightStart) => go('game', { start }));
-    s.on('night:end', (e: NightEnd) => deliverNightEnd(e));
+    wireNight(s);
     startVoice();
   }
   store.on(() => {
     if (store.me) {
       const s = getSocket();
       if (!s.hasListeners('night:start')) {
-        s.on('night:start', (start: NightStart) => go('game', { start }));
-        s.on('night:end', (e: NightEnd) => deliverNightEnd(e));
+        wireNight(s);
         startVoice();
       }
     }

@@ -62,7 +62,8 @@ register('lobby', (root) => {
     }
     const modeSel = h('select', { disabled: !isHost || l.mode === 'classic', onchange: (e: Event) => sock.emit('lobby:settings', { mode: (e.target as HTMLSelectElement).value }) });
     for (const [v, n] of [
-      ['nightshift', 'Night Shift'],
+      ['freeroam', 'Night Shift (Free Roam)'],
+      ['nightshift', 'Four Stations'],
       ['showtime', 'Showtime'],
     ]) {
       const o = h('option', { value: v }, n);
@@ -89,7 +90,7 @@ register('lobby', (root) => {
             ? h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: l.options.fillBots, onchange: (e: Event) => sock.emit('lobby:settings', { options: { fillBots: (e.target as HTMLInputElement).checked } }) }), 'Fill with bots')
             : null),
           sealedNote ? h('div', { class: 'dim', style: 'margin:6px 0' }, sealedNote) : null,
-          l.mode !== 'classic'
+          l.mode !== 'classic' && l.mode !== 'freeroam'
             ? h(
                 'div',
                 null,

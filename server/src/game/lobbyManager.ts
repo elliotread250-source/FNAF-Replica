@@ -14,6 +14,7 @@ import {
 import type { Env } from '../env';
 import type { Db } from '../db/client';
 import { Match, type MatchPlayer } from './match';
+import { FrMatch } from './frMatch';
 import { persistMatch, type PlayerReward } from './rewards';
 import { findById, highestNight, usersByIds, type UserRow } from '../services/users';
 import { limits } from '../auth/ratelimit';
@@ -44,7 +45,7 @@ export interface Lobby {
   options: LobbyState['options'];
   players: Map<string, LPlayer>;
   state: LobbyState['state'];
-  match: Match | null;
+  match: Match | FrMatch | null;
   emptySince: number | null;
   hostHighest: number;
 }
@@ -188,6 +189,7 @@ export class LobbyManager {
       case 'lobby:station': {
         if (lobby.state !== 'waiting') return;
         const st = msg.station as StationId;
+        if (lobby.mode === 'freeroam') return;
         const allowed = lobby.mode === 'classic' ? ['office'] : ['west', 'east', 'south', 'control'];
         if (!allowed.includes(st)) return fail('bad_station', 'No such station.');
         const taken = [...lobby.players.values()].find((p) => p.station === st && p.userId !== user.id);
@@ -208,7 +210,7 @@ export class LobbyManager {
         if (msg.mode) {
           lobby.mode = msg.mode as Lobby['mode'];
           for (const p of lobby.players.values()) {
-            p.station = lobby.mode === 'classic' ? 'office' : p.station === 'office' ? null : p.station;
+            p.station = lobby.mode === 'classic' ? 'office' : lobby.mode === 'freeroam' ? null : p.station === 'office' ? null : p.station;
             p.puppeteer = false;
           }
           if (lobby.mode === 'showtime') me.puppeteer = true;
@@ -258,8 +260,19 @@ export class LobbyManager {
         return;
       }
       case 'input': {
-        if (!lobby.match || lobby.match.ended) return;
+        if (!lobby.match || lobby.match.ended || lobby.match instanceof FrMatch) return;
         lobby.match.input(user.id, msg.seq as number, msg.input as never);
+        return;
+      }
+      case 'fr:test': {
+        if (!this.env.testHooks || !(lobby.match instanceof FrMatch)) return;
+        lobby.match.teleport(user.id, msg.x as number, msg.y as number, msg.z as number);
+        reply({ ok: true });
+        return;
+      }
+      case 'fr:cmd': {
+        if (!(lobby.match instanceof FrMatch) || lobby.match.ended) return;
+        lobby.match.cmd(user.id, msg.seq as number, msg.cmd as never);
         return;
       }
       case 'look':
@@ -353,7 +366,7 @@ export class LobbyManager {
     const p = this.playerFrom(user);
     if (mode === 'classic') p.station = 'office';
     else if (mode === 'showtime') p.puppeteer = true;
-    else p.station = 'west';
+    else if (mode === 'nightshift') p.station = 'west';
     l.players.set(user.id, p);
     this.lobbies.set(l.code, l);
     this.userLobby.set(user.id, l.code);
@@ -369,7 +382,7 @@ export class LobbyManager {
     const fresh = (await findById(this.db, user.id)) ?? user;
     const p = this.playerFrom(fresh);
     const taken = new Set([...l.players.values()].map((x) => x.station));
-    p.station = (['west', 'east', 'south', 'control'] as StationId[]).find((s) => !taken.has(s)) ?? null;
+    p.station = l.mode === 'freeroam' ? null : ((['west', 'east', 'south', 'control'] as StationId[]).find((s) => !taken.has(s)) ?? null);
     l.players.set(user.id, p);
     this.userLobby.set(user.id, l.code);
     return null;
@@ -442,6 +455,10 @@ export class LobbyManager {
 
   private startNight(l: Lobby): void {
     l.state = 'in_night';
+    if (l.mode === 'freeroam') {
+      this.startFreeRoam(l);
+      return;
+    }
     const players: MatchPlayer[] = [...l.players.values()].map((p) => ({
       pid: p.userId,
       name: p.name,
@@ -478,6 +495,72 @@ export class LobbyManager {
     l.match = match;
     match.start();
     this.broadcast(l);
+  }
+
+  private startFreeRoam(l: Lobby): void {
+    const players = [...l.players.values()].map((p) => ({ pid: p.userId, name: p.name, isBot: p.isBot, isHost: p.userId === l.hostId, equipped: p.equipped }));
+    const seed = this.env.TEST_SEED ?? Math.floor(Math.random() * 2 ** 31);
+    const match: FrMatch = new FrMatch({
+      seed,
+      night: Math.min(6, l.night),
+      fast: this.env.fastNight,
+      testHooks: this.env.testHooks,
+      players,
+      introMs: this.env.fastNight ? 500 : 1500,
+      send: (pid, ev, payload) => this.io.to(USER(pid)).emit(ev, payload),
+      onEnd: () => void this.endFreeRoam(l, match, players),
+    });
+    l.match = match;
+    match.start();
+    this.broadcast(l);
+  }
+
+  private async endFreeRoam(l: Lobby, match: FrMatch, players: { pid: string; name: string; isBot: boolean }[]): Promise<void> {
+    const r = match.result();
+    let rewards: Record<string, PlayerReward> = {};
+    try {
+      const rows = await usersByIds(this.db, players.filter((p) => !p.isBot).map((p) => p.pid));
+      rewards = await persistMatch(this.db, r, {
+        startedAt: match.startedAt,
+        players: players.map((p) => ({ pid: p.pid, userId: rows.find((u) => u.id === p.pid)?.id ?? null, isBot: p.isBot })),
+        customAi: null,
+        seconds: match.elapsedSeconds(),
+      });
+    } catch (err) {
+      this.log.error({ err }, 'persisting free-roam match failed');
+    }
+    const team = r.players.map((p) => ({
+      pid: p.pid,
+      name: players.find((q) => q.pid === p.pid)?.name ?? '?',
+      station: null,
+      role: p.role,
+      survived: p.survived,
+      killedBy: p.killedBy,
+      deathHour: p.deathHour,
+      stats: p.stats,
+    }));
+    for (const p of players) {
+      if (p.isBot) continue;
+      const mine = r.players.find((x) => x.pid === p.pid);
+      this.io.to(USER(p.pid)).emit('night:end', {
+        result: r.result,
+        mode: 'freeroam',
+        night: r.night,
+        hour: r.hour,
+        power: r.power,
+        team,
+        you: mine,
+        rewards: rewards[p.pid] ?? { tokens: mine?.tokens ?? 0, firstWinBonus: 0, newAchievements: [], newCosmetics: [], balance: 0 },
+      });
+    }
+    l.match = null;
+    l.state = 'waiting';
+    for (const p of l.players.values()) p.ready = false;
+    if (this.lobbies.has(l.code)) {
+      const host = l.players.get(l.hostId);
+      if (host) l.hostHighest = await highestNight(this.db, host.userId, 'nightshift');
+      this.broadcast(l);
+    }
   }
 
   private async endNight(l: Lobby, match: Match, w: World, players: MatchPlayer[]): Promise<void> {
@@ -532,6 +615,16 @@ export class LobbyManager {
   }
 
   private radio(l: Lobby, fromId: string, ev: 'chat' | 'callout', payload: Record<string, unknown>): void {
+    if (l.match instanceof FrMatch) {
+      const sim = l.match.sim;
+      const senderGhost = sim.players.get(fromId)?.ghost ?? false;
+      for (const p of l.players.values()) {
+        const ghost = sim.players.get(p.userId)?.ghost ?? false;
+        if (senderGhost && !ghost && !l.options.ghostsTalk) continue;
+        this.io.to(USER(p.userId)).emit(ev, { ...payload, ghost: senderGhost });
+      }
+      return;
+    }
     const w = l.match?.world;
     if (!w || l.options.ghostsTalk) {
       this.io.to(ROOM(l.code)).emit(ev, payload);
@@ -607,7 +700,7 @@ export class LobbyManager {
           persistMatch(this.db, r, {
             startedAt: m.startedAt,
             players: [...l.players.values()].map((p) => ({ pid: p.userId, userId: p.isBot ? null : p.userId, isBot: p.isBot })),
-            customAi: m.world.custom,
+            customAi: m instanceof FrMatch ? null : m.world.custom,
             abandoned: true,
             seconds: m.elapsedSeconds(),
           }).catch((err: unknown) => this.log.warn({ err }, 'abandon persist failed')),

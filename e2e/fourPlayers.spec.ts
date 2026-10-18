@@ -25,6 +25,7 @@ test('four guards survive a FAST_NIGHT Night 1 together', async ({ browser }, in
   // Player 1 creates a lobby and reads the code from the DOM.
   const [p1, p2, p3, p4] = pages;
   await p1.getByRole('button', { name: 'Clock In' }).click();
+  await p1.getByText('Four Stations (co-op)').click();
   await p1.locator('#create-lobby').click();
   const code = (await p1.locator('#room-code').textContent())?.trim() ?? '';
   expect(code).toMatch(/^[A-Z]{4}$/);
