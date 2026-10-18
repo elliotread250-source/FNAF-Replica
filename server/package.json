@@ -19,6 +19,7 @@
     "nodemailer": "6.9.16",
     "postgres": "3.4.5",
     "socket.io": "4.8.1",
+    "socket.io-msgpack-parser": "3.0.2",
     "zod": "3.24.1"
   },
   "devDependencies": {

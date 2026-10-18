@@ -25,3 +25,7 @@ export { PLUGINS, pluginAi } from './sim/animatronics/plugins';
 export * from './protocol/messages';
 export * from './protocol/api';
 export * from './bots';
+export * from './world';
+export * from './frConfig';
+export * from './sim/fr/collision';
+export * from './sim/fr/controller';
