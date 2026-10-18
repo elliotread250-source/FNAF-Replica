@@ -7,7 +7,7 @@ function setup(aggression = 10, opts: { lit?: string[] } = {}): { sim: FrSim; p:
   const sim = new FrSim({ seed: 42, night: 3, mode: 'night', aggression: { bonnie: aggression }, spawnProtection: 0, playerCount: 4 });
   const p = sim.addPlayer('p1', 'Tester');
   sim.tick();
-  const a = sim.agents[0];
+  const a = sim.agents.find((q) => q.id === 'bonnie') as Agent;
   if (opts.lit) {
     sim.power.main = true;
     sim.night.breakers.fill(true);

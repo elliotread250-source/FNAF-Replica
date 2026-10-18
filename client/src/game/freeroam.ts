@@ -176,6 +176,8 @@ export class FreeRoam {
   private snapGap = 1 / FR.SNAPSHOT_HZ;
   private pendingEnd: NightEnd | null = null;
   private nightVis: NightVisuals;
+  private stopSong: () => void = () => {};
+  private golden: CharacterRig | null = null;
   private clipboardOpen = false;
   /** Test and debug access, only wired when explicitly asked for. */
   readonly debug = {
@@ -293,7 +295,9 @@ export class FreeRoam {
 
   /** The animatronics that aren't hunting yet stand on the stage and in the cove. */
   private buildStatues(): void {
-    const live = new Set(this.sim.agents.map((a) => a.id));
+    // Characters hunting tonight are agents; the rest stand where they live.
+    const n = Math.max(1, Math.min(6, this.sim.opts.night));
+    const live = new Set<string>(this.mode === 'night' ? ['freddy', ...Object.keys(FR.nights.AGGRESSION[n] ?? {})] : []);
     const spots: [string, number, number, number, number][] = [
       ['freddy', 58.5, 1.0, 15.5, Math.PI / 2],
       ['bonnie', 58.5, 1.0, 13.5, Math.PI / 2],
@@ -414,6 +418,7 @@ export class FreeRoam {
     audio.stopLoop('fr_drone', 0.4);
     audio.stopLoop('fr_hum', 0.4);
     audio.stopLoop('fr_chase', 0.3);
+    this.stopSong();
     for (const c of this.cleanup) c();
     this.ui.root.remove();
   }
@@ -600,6 +605,7 @@ export class FreeRoam {
       let ag = sim.agents.find((q) => q.id === a.id);
       if (!ag) ag = makeAgent(sim, a.id, 0, 0);
       Object.assign(ag, { x: a.x, y: a.y, z: a.z, yaw: a.yaw, state: a.s, anim: a.a, speed: a.sp });
+      ag.x2.stage = a.k;
       keep.push(ag);
       const v = this.agentView(ag);
       v.prev = { ...v.cur };
@@ -751,7 +757,9 @@ export class FreeRoam {
         break;
       case 'catch':
         if (mine) {
-          this.scareT = this.jumpscare.start(e.agent, 'standard') + 0.15;
+          const kind = e.agent === 'powerout' ? 'powerout' : e.agent === 'puppet' ? 'puppet' : e.agent === 'golden' ? 'golden' : 'standard';
+          this.scareT = this.jumpscare.start(e.agent === 'powerout' ? 'freddy' : e.agent, kind) + 0.15;
+          this.removeGolden();
           audio.play(`scream_${e.agent}`, { gain: store.settings.reducedJumpscares ? 0.4 : 1 });
           if (this.chaseLoop) {
             this.chaseLoop = false;
@@ -829,9 +837,80 @@ export class FreeRoam {
         audio.play('door_slam', { gain: 1, rate: 0.5 });
         this.say('The power is gone.');
         break;
+      case 'clatter':
+        audio.play('kitchen', { gain: 0.9 * this.gainAt(e.x, e.y, e.z) });
+        break;
+      case 'cove':
+        if (e.stage === 2) this.stopSong = this.startSong('foxy', { bpm: 90, gain: 0.12, loop: false });
+        break;
+      case 'foxyRun':
+        audio.play('foxy_run', { gain: 0.9 });
+        audio.play('scream_foxy', { gain: 0.25, rate: 1.4 });
+        break;
+      case 'foxyBack':
+        audio.play('groan', { gain: 0.5 });
+        break;
+      case 'foxyKnock':
+        for (let k = 0; k < 3; k++) setTimeout(() => audio.play('knock', { gain: 0.9 }), k * 320);
+        this.say(`BANG BANG BANG. Something hit the shutter. Power -${e.drain}%.`);
+        break;
+      case 'laugh':
+        if (e.agent === 'freddy') audio.play('laugh', { gain: 0.3 + 0.7 * this.gainAt(e.x, e.y, e.z) });
+        break;
+      case 'puppetOut':
+        this.stopSong();
+        this.stopSong = this.startSong('weasel', { bpm: 210, gain: 0.25, loop: true, wobble: 1 });
+        this.say('The gift box bursts open.');
+        break;
+      case 'puppetBack':
+        this.stopSong();
+        break;
+      case 'toreador':
+        this.stopSong();
+        this.stopSong = this.startSong('toreador', { bpm: 96, gain: 0.25, loop: true, wobble: 0.6 });
+        break;
+      case 'songEnd':
+        this.stopSong();
+        audio.play('laugh', { gain: 0.6, rate: 0.7 });
+        break;
+      case 'golden':
+        this.onGolden(e);
+        break;
       default:
         break;
     }
+  }
+
+  private startSong(name: string, o: { bpm: number; gain: number; loop: boolean; wobble?: number }): () => void {
+    if (!audio.ready) return () => {};
+    return audio.melody(name, { ...o, bus: 'music' });
+  }
+
+  private onGolden(e: Extract<FrEvent, { t: 'golden' }>): void {
+    if (e.pid !== this.myId) return;
+    if (e.phase === 'poster') {
+      // The poster changes for this player only, and IT'S ME flickers for a frame.
+      const flash = h('div', { class: 'fr-itsme' }, "IT'S ME");
+      if (!store.settings.photosensitive) {
+        this.ui.root.appendChild(flash);
+        setTimeout(() => flash.remove(), 110);
+      }
+      audio.play('garble', { gain: 0.3 });
+    } else if (e.phase === 'appear' && e.x !== undefined && e.z !== undefined) {
+      this.removeGolden();
+      const rig = buildCharacter('golden', store.roster.mode);
+      rig.pose('slumped');
+      rig.root.position.set(e.x, this.me.body.y, e.z);
+      rig.root.rotation.y = Math.atan2(this.me.body.x - e.x, this.me.body.z - e.z);
+      this.scene.add(rig.root);
+      this.golden = rig;
+      audio.play('garble', { gain: 0.5, rate: 0.6 });
+    } else this.removeGolden();
+  }
+
+  private removeGolden(): void {
+    if (this.golden) this.scene.remove(this.golden.root);
+    this.golden = null;
   }
 
   private gainAt(x: number, y: number, z: number): number {
@@ -842,7 +921,7 @@ export class FreeRoam {
   private agentView(ag: Agent): AgentView {
     let v = this.agents.get(ag.id);
     if (!v) {
-      const rig = buildCharacter(ag.id, store.roster.mode);
+      const rig = buildCharacter(ag.id === 'powerout' ? 'freddy' : ag.id, store.roster.mode);
       this.scene.add(rig.root);
       const p = { x: ag.x, y: ag.y, z: ag.z, yaw: ag.yaw };
       v = { rig, prev: { ...p }, cur: { ...p }, walkT: 0 };
@@ -868,6 +947,27 @@ export class FreeRoam {
       rig.root.position.set(x, y + (moving ? Math.abs(Math.sin(v.walkT)) * 0.06 : 0), z);
       rig.root.rotation.y = yaw + Math.PI;
       rig.root.rotation.z = moving ? Math.sin(v.walkT) * 0.035 : 0;
+      if (ag.id === 'foxy' && ag.state === 'COVE') {
+        // Cove stages: hidden behind the curtain, peeking through it, stepping out in front.
+        const stage = ag.x2.stage ?? 0;
+        rig.root.position.x = [x, x + 5.2, x + 6.4, x + 6.4][Math.min(3, stage)];
+        rig.root.visible = stage >= 1 || this.lastRoom === 'cove';
+      }
+      if (ag.id === 'puppet') {
+        // Inside the gift box until the music stops; afterwards it floats.
+        const out = ag.state !== 'DORMANT';
+        rig.root.visible = out;
+        rig.root.position.y = y + (out ? 0.15 + Math.sin(this.time * 2.1) * 0.05 : 0);
+        rig.root.rotation.z = Math.sin(this.time * 1.3) * 0.06;
+      }
+      if (ag.id === 'powerout') {
+        // In the dark, only his face glows, pulsing to the song.
+        const singing = ag.state === 'SONG';
+        for (const e of rig.eyes) {
+          const m = e.material as THREE.MeshStandardMaterial;
+          m.emissiveIntensity = singing ? 2 + Math.sin(this.time * 6) * 2 : 0;
+        }
+      }
       if (moving) {
         rig.armL.rotation.x = Math.sin(v.walkT) * 0.5;
         rig.armR.rotation.x = -Math.sin(v.walkT) * 0.5;
@@ -879,14 +979,14 @@ export class FreeRoam {
         rig.armR.rotation.x *= 0.9;
       }
       // Eyes glow brighter while hunting.
-      const hunting = ag.state === 'CHASE';
-      for (const e of rig.eyes) {
+      const hunting = ag.state === 'CHASE' || ag.state === 'SPRINT' || ag.state === 'HUNT' || ag.state === 'PUPPET';
+      if (ag.id !== 'powerout') for (const e of rig.eyes) {
         const m = e.material as THREE.MeshStandardMaterial;
         if (m.emissiveIntensity !== undefined) m.emissiveIntensity = hunting ? 4 : 1.2;
       }
-      rig.tick(this.time);
-      // Footsteps: heavy, audible through walls within 25 m.
-      if (moving && Math.floor(v.walkT / Math.PI) !== Math.floor((v.walkT - dt * ag.speed * 2.6) / Math.PI)) {
+      if (ag.state !== 'FROZEN' && !(ag.id === 'freddy' && ag.anim === 'frozen')) rig.tick(this.time);
+      // Footsteps: heavy, audible through walls within 25 m. The Puppet makes no sound at all.
+      if (moving && ag.id !== 'puppet' && Math.floor(v.walkT / Math.PI) !== Math.floor((v.walkT - dt * ag.speed * 2.6) / Math.PI)) {
         const g = this.gainAt(x, y, z);
         const walls = this.sim.world.countBetween(x, y + 1, z, this.camera.position.x, this.camera.position.y, this.camera.position.z);
         if (g > 0.02) audio.play('step_heavy', { gain: g * 0.9 * Math.pow(0.55, walls.walls + walls.doors), rate: 0.9 + Math.random() * 0.15 });

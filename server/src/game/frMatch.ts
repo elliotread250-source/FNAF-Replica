@@ -172,6 +172,8 @@ export class FrMatch {
     if (e.t === 'noise') return false;
     if (e.t === 'state') return this.o.testHooks;
     if (e.t === 'step') return e.pid !== pid;
+    // Golden Freddy is only ever there for one player.
+    if (e.t === 'golden') return e.pid === pid;
     return true;
   }
 
@@ -209,7 +211,7 @@ export class FrMatch {
     const agents: FrSnapAgent[] = [];
     for (const a of sim.agents) {
       if (me && !me.ghost && !this.canKnowAgent(me.body.x, me.body.y + eyeHeight(me.body), me.body.z, a)) continue;
-      agents.push({ id: a.id, x: round(a.x), y: round(a.y), z: round(a.z), yaw: round(a.yaw), s: a.state, a: a.anim, sp: round(a.speed) });
+      agents.push({ id: a.id, x: round(a.x), y: round(a.y), z: round(a.z), yaw: round(a.yaw), s: a.state, a: a.anim, sp: round(a.speed), k: a.x2.stage ?? 0 });
     }
     return {
       tick: sim.tickN,
@@ -256,7 +258,9 @@ export class FrMatch {
    * A client hears about an animatronic only within 35 m, and only if it could see it or hear it moving
    * (footsteps carry 25 m). Anything else stays server-side, so wallhacks have nothing to show.
    */
-  canKnowAgent(ex: number, ey: number, ez: number, a: { x: number; y: number; z: number; speed: number }): boolean {
+  canKnowAgent(ex: number, ey: number, ez: number, a: { x: number; y: number; z: number; speed: number; state: string }): boolean {
+    // At home (on stage, in the cove, in the gift box) is public knowledge.
+    if (a.state === 'DORMANT' || a.state === 'COVE') return true;
     const d = Math.hypot(a.x - ex, a.y - ey, a.z - ez);
     if (d > 35) return false;
     if (a.speed > 0.2 && d < 25) return true;

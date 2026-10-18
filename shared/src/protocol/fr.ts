@@ -95,6 +95,8 @@ export interface FrSnapAgent {
   s: string;
   a: string;
   sp: number;
+  /** Character detail: Foxy's cove stage. */
+  k: number;
 }
 
 export interface FrSnapMe {

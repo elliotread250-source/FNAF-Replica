@@ -2,11 +2,28 @@ import { FR, aggr } from '../../frConfig';
 import { eyeHeight } from './controller';
 import type { NavPathPoint } from './nav';
 import type { FrPlayer, FrSim } from './sim';
+import { freddyGrace, tickCast } from './cast';
 
 // Animatronic agents: perception (sight and hearing), an explicit state machine, path following with
 // doors, searching hiding spots, catching. Per-character rules hang off `id`.
 
-export type AgentState = 'DORMANT' | 'PATROL' | 'INVESTIGATE' | 'CHASE' | 'SEARCH' | 'CHECK' | 'SATISFIED' | 'RETURN';
+export type AgentState =
+  | 'DORMANT'
+  | 'PATROL'
+  | 'INVESTIGATE'
+  | 'CHASE'
+  | 'SEARCH'
+  | 'CHECK'
+  | 'SATISFIED'
+  | 'RETURN'
+  | 'EAT'
+  | 'COVE'
+  | 'SPRINT'
+  | 'STALK'
+  | 'PUPPET'
+  | 'SONG'
+  | 'HUNT'
+  | 'FROZEN';
 
 export interface Agent {
   id: string;
@@ -48,7 +65,9 @@ export interface Agent {
   unseenT: number;
   speed: number;
   /** Animation hint for renderers. */
-  anim: 'idle' | 'walk' | 'run' | 'open' | 'check' | 'look' | 'catch';
+  anim: 'idle' | 'walk' | 'run' | 'open' | 'check' | 'look' | 'catch' | 'eat' | 'float' | 'sing' | 'knock' | 'peek' | 'frozen';
+  /** Character-specific state (cast.ts). */
+  x2: Record<string, number>;
   log: string[];
 }
 
@@ -57,7 +76,9 @@ const HOME: Record<string, { x: number; y: number; z: number; yaw: number }> = {
   bonnie: { x: 58.5, y: 1.0, z: 13.5, yaw: Math.PI / 2 },
   freddy: { x: 58.5, y: 1.0, z: 15.5, yaw: Math.PI / 2 },
   chica: { x: 58.5, y: 1.0, z: 17.5, yaw: Math.PI / 2 },
-  foxy: { x: 8, y: 0.4, z: 16, yaw: -Math.PI / 2 },
+  foxy: { x: 7.2, y: 0.4, z: 16, yaw: -Math.PI / 2 },
+  puppet: { x: 22, y: 0.1, z: 5.2, yaw: Math.PI },
+  powerout: { x: 30, y: 0, z: 20, yaw: 0 },
 };
 
 /** Rooms each character likes to patrol, with weights. */
@@ -78,6 +99,30 @@ const PATROL: Record<string, [string, number][]> = {
     ['prize', 1],
   ],
 };
+
+PATROL.chica = [
+  ['kitchen', 6],
+  ['eastHall', 4],
+  ['eastCorner', 2],
+  ['restCorr', 1],
+  ['men', 1],
+  ['women', 1],
+  ['dining', 3],
+  ['pantry', 1],
+  ['supply', 1],
+];
+PATROL.freddy = [
+  ['dining', 3],
+  ['eastHall', 2],
+  ['westHall', 2],
+  ['play', 2],
+  ['restCorr', 1],
+  ['kitchen', 1],
+  ['party2', 1],
+  ['lobby', 1],
+  ['prize', 1],
+];
+PATROL.powerout = PATROL.freddy;
 
 export function makeAgent(sim: FrSim, id: string, aggression: number, protection: number): Agent {
   const h = HOME[id] ?? HOME.bonnie;
@@ -117,11 +162,12 @@ export function makeAgent(sim: FrSim, id: string, aggression: number, protection
     unseenT: 0,
     speed: 0,
     anim: 'idle',
+    x2: {},
     log: [],
   };
 }
 
-function setState(sim: FrSim, a: Agent, to: AgentState, why: string): void {
+export function setState(sim: FrSim, a: Agent, to: AgentState, why: string): void {
   if (a.state === to) return;
   sim.emit({ t: 'state', agent: a.id, from: a.state, to, why });
   if (a.log.length > 30) a.log.shift();
@@ -135,36 +181,45 @@ function setState(sim: FrSim, a: Agent, to: AgentState, why: string): void {
 
 // ---- Movement ---------------------------------------------------------------------------------------
 
-function doorOk(sim: FrSim) {
+export function doorOk(sim: FrSim, a?: Agent) {
   return (id: number) => {
     const d = sim.level.doors[id];
+    // Power-Out Freddy can't open doors; the Puppet ignores them (but not shutters).
+    if (a?.x2.noDoors) return sim.world.doorOpen[id] >= 0.7;
+    if (a?.x2.ghost && d.kind !== 'shutter' && d.kind !== 'roller') return true;
     if (d.locked) return false;
     if (d.kind === 'shutter' || d.kind === 'roller' || d.kind === 'exit') return sim.doorTarget[id] > 0.5;
     return true;
   };
 }
 
-function planTo(sim: FrSim, a: Agent, x: number, y: number, z: number): boolean {
+export function planTo(sim: FrSim, a: Agent, x: number, y: number, z: number): boolean {
   const from = sim.nav.nearest(a.x, a.y, a.z);
   const to = sim.nav.nearest(x, y, z);
   a.goal = { x, y, z };
   a.replanT = FR.ai.REPLAN_MIN;
-  const p = sim.nav.findPath(from, to, doorOk(sim));
+  const p = sim.nav.findPath(from, to, doorOk(sim, a));
   a.path = p;
   a.pathI = p && p.length > 1 ? 1 : 0;
   return Boolean(p);
 }
 
 /** Walk the current path. Returns true when the goal is reached (or there is no path). */
-function follow(sim: FrSim, a: Agent, speed: number, dt: number): boolean {
+export function follow(sim: FrSim, a: Agent, speed: number, dt: number): boolean {
   const path = a.path;
   if (!path || a.pathI >= path.length) {
     a.speed = 0;
     return true;
   }
   const wp = path[a.pathI];
-  // A door on this segment: open it first.
-  if (wp.door >= 0 && sim.world.doorOpen[wp.door] < 0.7) {
+  // A door on this segment: open it first (the Puppet drifts straight through regular doors).
+  const drifts = a.x2.ghost && wp.door >= 0 && sim.level.doors[wp.door].kind !== 'shutter' && sim.level.doors[wp.door].kind !== 'roller';
+  if (wp.door >= 0 && sim.world.doorOpen[wp.door] < 0.7 && !drifts) {
+    if (a.x2.noDoors) {
+      a.path = null;
+      a.speed = 0;
+      return false;
+    }
     const d = sim.level.doors[wp.door];
     if (d.locked || ((d.kind === 'shutter' || d.kind === 'roller') && sim.doorTarget[wp.door] < 0.5)) {
       a.path = null; // blocked: replan next tick
@@ -208,7 +263,7 @@ function follow(sim: FrSim, a: Agent, speed: number, dt: number): boolean {
   return a.pathI >= path.length;
 }
 
-function turnToward(a: Agent, yaw: number, dt: number, rate: number): void {
+export function turnToward(a: Agent, yaw: number, dt: number, rate: number): void {
   let d = yaw - a.yaw;
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
@@ -216,7 +271,7 @@ function turnToward(a: Agent, yaw: number, dt: number, rate: number): void {
   a.yaw += Math.max(-m, Math.min(m, d));
 }
 
-function goTo(sim: FrSim, a: Agent, x: number, y: number, z: number, speed: number, dt: number): boolean {
+export function goTo(sim: FrSim, a: Agent, x: number, y: number, z: number, speed: number, dt: number): boolean {
   if (!a.path || !a.goal || Math.hypot(a.goal.x - x, a.goal.z - z) > 0.6) {
     if (a.replanT > 0 && a.path) {
       a.replanT -= dt;
@@ -281,7 +336,9 @@ function perceive(sim: FrSim, a: Agent, dt: number): void {
     const v = visibility(sim, a, p);
     a.canSee[p.id] = v.vis > 0;
     const cur = a.detect[p.id] ?? 0;
-    let next = v.vis > 0 ? cur + (v.vis / Math.max(0.2, detectTime)) * dt : cur - FR.ai.DETECT_DECAY * dt;
+    // Chica spots cupcake carriers 1.5 times faster.
+    const smell = a.id === 'chica' && sim.night.has(p, 'cupcake') ? 1.5 : 1;
+    let next = v.vis > 0 ? cur + ((v.vis * smell) / Math.max(0.2, detectTime)) * dt : cur - FR.ai.DETECT_DECAY * dt;
     if (v.instant) next = 1;
     next = Math.max(0, Math.min(1, next));
     a.detect[p.id] = next;
@@ -291,7 +348,7 @@ function perceive(sim: FrSim, a: Agent, dt: number): void {
       sim.emit({ t: 'notice', agent: a.id, pid: p.id });
     }
     if (next < 0.05) a.noticed[p.id] = false;
-    if (next >= 1 && v.vis > 0 && canHunt(a) && (a.spared[p.id] ?? -1) <= sim.time) startChase(sim, a, p, v.instant ? 'within reach' : 'spotted');
+    if (next >= 1 && v.vis > 0 && canHunt(a) && !OWN_RULES.has(a.id) && (a.spared[p.id] ?? -1) <= sim.time) startChase(sim, a, p, v.instant ? 'within reach' : 'spotted');
   }
   // Is anyone looking at this agent? (Bonnie's relocation, Freddy later.)
   let seen = false;
@@ -299,7 +356,10 @@ function perceive(sim: FrSim, a: Agent, dt: number): void {
   a.unseenT = seen ? 0 : a.unseenT + dt;
 }
 
-function canHunt(a: Agent): boolean {
+/** Characters whose hunting is entirely their own rule (cast.ts), never the generic chase. */
+const OWN_RULES = new Set(['foxy', 'freddy', 'puppet', 'powerout']);
+
+export function canHunt(a: Agent): boolean {
   return a.state !== 'DORMANT' && a.state !== 'SATISFIED' && a.state !== 'RETURN' && a.state !== 'CHECK';
 }
 
@@ -329,13 +389,14 @@ function hear(sim: FrSim, a: Agent): void {
 
 // ---- Catching ---------------------------------------------------------------------------------------
 
-function tryCatch(sim: FrSim, a: Agent): boolean {
+export function tryCatch(sim: FrSim, a: Agent): boolean {
   const fx = -Math.sin(a.yaw);
   const fz = -Math.cos(a.yaw);
   for (const p of sim.players.values()) {
     // Hidden players (even mid-way in) are only ever found by checking the spot.
     if (!sim.alive(p) || (p.hidden && p.hidden.phase !== 'exit')) continue;
     if ((a.spared[p.id] ?? -1) > sim.time) continue;
+    if (freddyGrace(sim, a, p.id)) continue;
     const b = p.body;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
@@ -352,19 +413,19 @@ function tryCatch(sim: FrSim, a: Agent): boolean {
   return false;
 }
 
-function afterCatch(sim: FrSim, a: Agent): void {
+export function afterCatch(sim: FrSim, a: Agent): void {
   setState(sim, a, 'SATISFIED', 'caught someone');
   a.target = null;
   a.lastKnown = null;
   a.heard = null;
-  a.pauseT = FR.ai.SATISFIED[0] + sim.rand() * (FR.ai.SATISFIED[1] - FR.ai.SATISFIED[0]);
+  a.pauseT = FR.ai.SATISFIED[0] + sim.rand() * (FR.ai.SATISFIED[1] - FR.ai.SATISFIED[0]) + (a.id === 'chica' ? 3 : 0);
   a.anim = 'catch';
   for (const k of Object.keys(a.detect)) a.detect[k] = 0;
 }
 
 // ---- Decisions --------------------------------------------------------------------------------------
 
-function patrolTarget(sim: FrSim, a: Agent, minDist = 0): { x: number; y: number; z: number } | null {
+export function patrolTarget(sim: FrSim, a: Agent, minDist = 0): { x: number; y: number; z: number } | null {
   const list = PATROL[a.id] ?? PATROL.bonnie;
   const here = sim.roomAt(a.x, a.y + 0.3, a.z);
   for (let tries = 0; tries < 8; tries++) {
@@ -389,7 +450,7 @@ function patrolTarget(sim: FrSim, a: Agent, minDist = 0): { x: number; y: number
 }
 
 /** FNAF-style move opportunity: roll 1..20 against aggression. */
-function decide(sim: FrSim, a: Agent): void {
+export function decide(sim: FrSim, a: Agent): void {
   const roll = 1 + Math.floor(sim.rand() * 20);
   const hunting = roll <= a.aggression;
   if (hunting) {
@@ -422,7 +483,7 @@ function decide(sim: FrSim, a: Agent): void {
   }
 }
 
-function investigate(sim: FrSim, a: Agent, at: { x: number; y: number; z: number }, why: string): void {
+export function investigate(sim: FrSim, a: Agent, at: { x: number; y: number; z: number }, why: string): void {
   setState(sim, a, 'INVESTIGATE', why);
   a.goal = { x: at.x, y: at.y, z: at.z };
   a.pauseT = 0;
@@ -480,6 +541,10 @@ export function sawHiding(sim: FrSim, a: Agent, pid: string, spot: number): void
 
 export function tickAgent(sim: FrSim, a: Agent, dt: number): void {
   a.stateT += dt;
+  if (tickCast(sim, a, dt)) {
+    if (a.speed > 0.5) for (const p of sim.players.values()) if (Math.hypot(p.body.x - a.x, p.body.z - a.z) < 25) p.lastTell = sim.time;
+    return;
+  }
   a.perceiveT -= dt;
   if (a.state !== 'DORMANT' && a.perceiveT <= 0) {
     a.perceiveT = 1 / FR.ai.PERCEPTION_HZ;
@@ -674,6 +739,10 @@ export function tickAgent(sim: FrSim, a: Agent, dt: number): void {
       a.speed = 0;
       a.pauseT -= dt;
       if (a.pauseT > 0) return;
+      if (a.id === 'foxy') {
+        setState(sim, a, 'RETURN', 'back to the cove');
+        return;
+      }
       const t = patrolTarget(sim, a, FR.ai.AWAY_AFTER_CATCH);
       setState(sim, a, 'PATROL', 'moving on');
       if (t) planTo(sim, a, t.x, t.y, t.z);

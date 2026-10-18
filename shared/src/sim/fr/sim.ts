@@ -7,6 +7,7 @@ import { eyeHeight, newBody, stepBody, type Body, type FrInput, type Stance } fr
 import { NavGrid } from './nav';
 import { Agent, makeAgent, sawHiding, tickAgent } from './ai';
 import { NightState } from './night';
+import { spawnPowerOut } from './cast';
 
 // The free-roam simulation. Deterministic given a seed and the input log; runs headless in Node (server,
 // tests, balance script) and in the browser (solo play). It owns players, doors, power, noise, the clock
@@ -70,7 +71,12 @@ export interface FrPlayer {
   useTarget: string | null;
   /** Left through the front doors early. */
   exited: boolean;
+  /** Golden Freddy, for this player only: 0 none, 1 armed by the poster, 2 sitting in front of them. */
+  golden: { phase: 0 | 1 | 2; yaw0: number; x: number; y: number; z: number; t: number; stare: number; seenPoster: boolean; count: number };
 }
+
+/** The band poster in the West Corner (Golden Freddy's poster). */
+export const GOLDEN_POSTER = { x: 18, y: 1.7, z: 51.75 };
 
 export type FrEvent =
   | { t: 'noise'; x: number; y: number; z: number; r: number; pid?: string }
@@ -109,7 +115,18 @@ export type FrEvent =
   | { t: 'cupcakesDone' }
   | { t: 'frontUnlocked' }
   | { t: 'exit'; pid: string }
-  | { t: 'powerOut' };
+  | { t: 'powerOut' }
+  | { t: 'clatter'; agent: string; x: number; y: number; z: number }
+  | { t: 'cove'; stage: number }
+  | { t: 'foxyRun'; agent: string }
+  | { t: 'foxyBack'; agent: string; why: string }
+  | { t: 'foxyKnock'; door: number; drain: number }
+  | { t: 'laugh'; agent: string; x: number; y: number; z: number }
+  | { t: 'puppetOut' }
+  | { t: 'puppetBack' }
+  | { t: 'toreador'; x: number; y: number; z: number }
+  | { t: 'songEnd' }
+  | { t: 'golden'; pid: string; phase: 'poster' | 'appear' | 'gone' | 'scream'; x?: number; z?: number };
 
 export interface FrSimOptions {
   seed: number;
@@ -122,6 +139,8 @@ export interface FrSimOptions {
   playerCount?: number;
   /** Seconds of spawn protection (defaults to the config by night). */
   spawnProtection?: number;
+  /** Multiplies Golden Freddy's odds (tests and Custom Night). */
+  goldenBoost?: number;
 }
 
 export const IDLE_CMD: FrCmd = { fwd: 0, strafe: 0, yaw: 0, pitch: 0, sprint: false, stance: 0, jump: false, flash: true, breath: false };
@@ -147,6 +166,9 @@ export class FrSim {
   tickN = 0;
   hour = 0;
   over: { won: boolean } | null = null;
+  /** Foxy's knocks tonight (each drains more). */
+  knocks = 0;
+  private powerOutAt = -1;
   readonly dt = 1 / FR.TICK_HZ;
   readonly hourSeconds: number;
   private started = false;
@@ -196,6 +218,7 @@ export class FrSim {
       useProgress: 0,
       useTarget: null,
       exited: false,
+      golden: { phase: 0, yaw0: 0, x: 0, y: 0, z: 0, t: 0, stare: 0, seenPoster: false, count: 0 },
     };
     this.players.set(id, p);
     return p;
@@ -221,10 +244,14 @@ export class FrSim {
     const count = this.opts.playerCount ?? Math.max(1, this.players.size);
     const scale = FR.scaling.AGGRESSION[Math.min(4, count)] ?? 1;
     const protection = this.opts.spawnProtection ?? (n === 1 ? FR.ai.SPAWN_PROTECTION_N1 : FR.ai.SPAWN_PROTECTION);
-    for (const [id, a] of Object.entries(roster)) {
-      if (id !== 'bonnie') continue; // Milestone 5 ships Bonnie; the rest of the cast follows.
-      this.agents.push(makeAgent(this, id, a * scale, protection));
+    for (const id of ['freddy', 'bonnie', 'chica', 'foxy']) {
+      const a = roster[id];
+      // Freddy always stands on the stage; inactive (aggression 0) he just watches.
+      if (a === undefined && id !== 'freddy') continue;
+      this.agents.push(makeAgent(this, id, (a ?? 0) * scale, protection));
     }
+    // The Puppet sleeps in the gift box from Night 3 (or whenever the roster names it).
+    if (n >= 3 || roster.puppet !== undefined) this.agents.push(makeAgent(this, 'puppet', 10, 0));
   }
 
   // ---- Queries -----------------------------------------------------------------------------------
@@ -318,6 +345,7 @@ export class FrSim {
     this.tickDoors(dt);
     this.night.tick(dt);
     for (const p of this.players.values()) this.tickPlayer(p, dt);
+    this.tickPowerOut();
     for (const a of this.agents) tickAgent(this, a, dt);
     this.tickClock();
     return this.events;
@@ -388,6 +416,7 @@ export class FrSim {
     p.holdingBreath = false;
     // Revive: holding E near a downed teammate.
     if (c.hold) this.tickRevive(p, dt);
+    this.tickGolden(p, dt);
     // Held interactions.
     if (c.use) {
       if (p.useTarget !== c.use) p.useProgress = 0;
@@ -540,12 +569,104 @@ export class FrSim {
     }
   }
 
-  /** An animatronic got a player. */
-  catchPlayer(p: FrPlayer, agent: string, kind: 'standard' | 'hiding', spot?: number): void {
+  /**
+   * Golden Freddy (Part 6.6): a rare roll when a player looks at the West Corner poster (or sits alone in
+   * Old Storage). Next time they turn around, he's slumped two metres in front of them. Stare for three
+   * seconds and he takes them out of the night; look away and he's gone; do nothing and he fades.
+   */
+  private tickGolden(p: FrPlayer, dt: number): void {
+    const n = Math.min(7, this.opts.night);
+    const odds = this.opts.mode === 'night' ? (FR.ai.GOLDEN_ODDS[n] ?? 0) * (this.opts.goldenBoost ?? 1) : 0;
+    const g = p.golden;
+    if (!odds || p.hidden) return;
+    if (g.phase === 0) {
+      if (g.count >= FR.ai.GOLDEN_MAX) return;
+      const sees = this.playerSees(p, GOLDEN_POSTER.x, GOLDEN_POSTER.y, GOLDEN_POSTER.z);
+      let roll = sees && !g.seenPoster;
+      g.seenPoster = sees;
+      const alone = n >= 3 && this.roomAt(p.body.x, p.body.y + 0.3, p.body.z) === 'bOld' && [...this.players.values()].every((q) => q === p || this.roomAt(q.body.x, q.body.y + 0.3, q.body.z) !== 'bOld');
+      if (alone && this.tickN % (FR.TICK_HZ * 10) === 0) roll = true;
+      if (roll && this.rand() < odds) {
+        g.phase = 1;
+        g.yaw0 = p.body.yaw;
+        this.emit({ t: 'golden', pid: p.id, phase: 'poster' });
+      }
+      return;
+    }
+    if (g.phase === 1) {
+      let d = p.body.yaw - g.yaw0;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) < (120 * Math.PI) / 180) return;
+      const fx = -Math.sin(p.body.yaw);
+      const fz = -Math.cos(p.body.yaw);
+      const ey = p.body.y + eyeHeight(p.body);
+      // Two metres in front if there's room in plain view, otherwise as close as fits.
+      const dist = [2, 1.6, 1.2].find((d) => {
+        const x = p.body.x + fx * d;
+        const z = p.body.z + fz * d;
+        return !this.world.blocked(x, p.body.y, z, 0.3, 1.0, 0.35) && this.world.clearLine(p.body.x, ey, p.body.z, x, p.body.y + 0.7, z);
+      });
+      if (dist === undefined) return;
+      const x = p.body.x + fx * dist;
+      const z = p.body.z + fz * dist;
+      Object.assign(g, { phase: 2, x, y: p.body.y, z, t: 0, stare: 0 });
+      g.count++;
+      p.lastTell = this.time;
+      this.emit({ t: 'golden', pid: p.id, phase: 'appear', x, z });
+      return;
+    }
+    g.t += dt;
+    const seen = this.playerSees(p, g.x, g.y + 0.7, g.z, true);
+    if (seen) g.stare += dt;
+    else if (g.stare > 0.15) {
+      g.phase = 0;
+      this.emit({ t: 'golden', pid: p.id, phase: 'gone' });
+      return;
+    }
+    if (g.stare >= FR.ai.GOLDEN_WINDOW) {
+      g.phase = 0;
+      this.emit({ t: 'golden', pid: p.id, phase: 'scream' });
+      this.catchPlayer(p, 'golden', 'standard', undefined, true);
+      return;
+    }
+    if (g.t >= FR.ai.GOLDEN_VANISH) {
+      g.phase = 0;
+      this.emit({ t: 'golden', pid: p.id, phase: 'gone' });
+    }
+  }
+
+  /** Power-Out Freddy arrives a few seconds into a blackout and leaves when the power comes back. */
+  private tickPowerOut(): void {
+    const out = this.night.powerOut;
+    const po = this.agents.findIndex((a) => a.id === 'powerout');
+    if (!out) {
+      this.powerOutAt = -1;
+      if (po >= 0) {
+        this.agents.splice(po, 1);
+        this.emit({ t: 'laugh', agent: 'powerout', x: 0, y: 0, z: 0 });
+      }
+      return;
+    }
+    if (this.powerOutAt < 0) this.powerOutAt = this.time + FR.ai.POWEROUT_DELAY[0] + this.rand() * (FR.ai.POWEROUT_DELAY[1] - FR.ai.POWEROUT_DELAY[0]);
+    if (po < 0 && this.time >= this.powerOutAt) {
+      const a = spawnPowerOut(this);
+      if (a) this.agents.push(a);
+      else this.powerOutAt = this.time + 1;
+    }
+  }
+
+  /** An animatronic got a player. `fatal` skips the downed state (the Puppet, Golden Freddy). */
+  catchPlayer(p: FrPlayer, agent: string, kind: 'standard' | 'hiding', spot?: number, fatal = false): void {
     if (!this.alive(p)) return;
     this.emit({ t: 'catch', agent, pid: p.id, kind, spot });
     p.hidden = null;
     p.catches++;
+    if (fatal) {
+      p.revives = FR.player.MAX_REVIVES;
+      this.toGhost(p);
+      return;
+    }
     const solo = (this.opts.playerCount ?? this.players.size) <= 1;
     if (p.revives >= FR.player.MAX_REVIVES || (solo && p.catches >= 2)) {
       this.toGhost(p);
@@ -570,7 +691,7 @@ export class FrSim {
 
   private toGhost(p: FrPlayer): void {
     const solo = (this.opts.playerCount ?? this.players.size) <= 1;
-    if (solo && p.downed && p.catches < 2) {
+    if (solo && p.downed && p.catches < 2 && p.revives < FR.player.MAX_REVIVES) {
       // The free get-up.
       p.downed = false;
       p.body.forcedCrawl = false;
