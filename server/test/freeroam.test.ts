@@ -62,8 +62,8 @@ describe('free-roam multiplayer', () => {
     const after = await waitFor<FrSnap>(socks[0], 'fr:snap');
     expect(Math.abs(after.me.body.z - before)).toBeLessThan(5.0 * 1.4 + 1);
 
-    // Interest management: nobody near the stage gets the animatronic until it is close.
-    expect(after.agents.every((a) => Math.hypot(a.x - after.me.body.x, a.z - after.me.body.z) <= 35)).toBe(true);
+    // Interest management: a roaming animatronic is only sent within 35 m (ones at home are public knowledge).
+    expect(after.agents.filter((a) => a.s !== 'DORMANT' && a.s !== 'COVE').every((a) => Math.hypot(a.x - after.me.body.x, a.z - after.me.body.z) <= 35)).toBe(true);
 
     const results = await Promise.all(ends);
     expect(new Set(results.map((x) => x.result)).size).toBe(1);
