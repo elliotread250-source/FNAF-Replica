@@ -3,7 +3,7 @@
 // those walls. See docs/map.svg for the rendered plan and docs/DECISIONS.md for where this departs from the
 // hand-written coordinates in the prompt.
 
-import type { CircuitId, FrDoorDef, InteractableDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
+import type { CircuitId, FrDoorDef, InteractableDef, ItemSpawnDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
 
 export const BASEMENT_Y = -4.5;
 
@@ -170,7 +170,7 @@ const sw = (circuit: CircuitId, room: string, x: number, z: number, ry: number, 
 });
 
 export const INTERACTABLES: InteractableDef[] = [
-  { id: 'main-breaker', type: 'mainBreaker', x: 22.15, y: 1.4 + BASEMENT_Y, z: 60, ry: 90, room: 'bBreaker', label: 'Main breaker' },
+  { id: 'main-breaker', type: 'mainBreaker', x: 22.65, y: 0.8 + BASEMENT_Y, z: 60, ry: 90, room: 'bBreaker', label: 'Master lever' },
   sw('staff', 'staff', 7.9, 62.5, -90),
   sw('boh', 'utility', 20, 56.1, 0),
   sw('west', 'westHall', 10.1, 37.5, 90),
@@ -191,6 +191,8 @@ export const INTERACTABLES: InteractableDef[] = [
   sw('basement', 'bHall', 12, 64.1, 0, 1.3 + BASEMENT_Y),
   sw('server', 'bServer', 54.1, 61, 90, 1.3 + BASEMENT_Y),
   sw('boiler', 'bBoiler', 40.1, 56, 90, 1.3 + BASEMENT_Y),
+  { id: 'musicbox', type: 'musicBox', x: 25, y: 1.15, z: 5.2, ry: 0, room: 'prize', label: 'Music box' },
+  { id: 'front-doors', type: 'frontDoors', x: 40, y: 1.2, z: 0.25, ry: 0, room: 'lobby', label: 'Front doors' },
   { id: 'honk', type: 'honk', x: 24.5, y: 1.9, z: 48.15, ry: 0, room: 'office', label: 'Honk' },
 ];
 
@@ -357,3 +359,71 @@ hide({ type: 'cabinet', room: 'kitchen', x: 44, y: EYE.cabinet, z: 44.6, cover: 
 hide({ type: 'stealth_alcove', room: 'bBoiler', x: 49.5, y: BASEMENT_Y + EYE.stealth_alcove, z: 58.5, cover: 0.7, checkPriority: 0.4, hazard: 'heat', exits: [{ x: 48.6, z: 60 }] });
 hide({ type: 'stealth_alcove', room: 'bServer', x: 61, y: BASEMENT_Y + EYE.stealth_alcove, z: 61.5, cover: 0.55, checkPriority: 0.4, exits: [{ x: 60, z: 62.5 }] });
 hide({ type: 'cabinet', room: 'bBreaker', x: 29.4, y: BASEMENT_Y + EYE.cabinet, z: 63.2, cover: 0.6, checkPriority: 0.5, exits: [{ x: 28.4, z: 63 }] });
+
+// ---- Power: breaker groups, the panel and the fuse boxes (Part 5.2, 5.3) ------------------------------
+
+/** The twelve breakers on the main panel; each powers a group of circuits. */
+export const BREAKER_GROUPS: { id: string; circuits: CircuitId[] }[] = [
+  { id: 'dining', circuits: ['dining'] },
+  { id: 'stage', circuits: ['stage', 'cove'] },
+  { id: 'west', circuits: ['west', 'party'] },
+  { id: 'east', circuits: ['east', 'restroom'] },
+  { id: 'kitchen', circuits: ['kitchen'] },
+  { id: 'play', circuits: ['play', 'lobby'] },
+  { id: 'staff', circuits: ['staff'] },
+  { id: 'boh', circuits: ['boh', 'manager'] },
+  { id: 'backstage', circuits: ['backstage', 'parts'] },
+  { id: 'dock', circuits: ['dock'] },
+  { id: 'basement', circuits: ['basement', 'boiler', 'server'] },
+  { id: 'office', circuits: ['office'] },
+];
+
+/** Fuse boxes and the breaker groups each one protects. */
+export const FUSE_BOXES: { x: number; y: number; z: number; ry: number; room: string; groups: string[] }[] = [
+  { x: 23, y: 1.5, z: 56.13, ry: 0, room: 'utility', groups: ['dining', 'staff', 'boh', 'office'] },
+  { x: 75, y: 1.5, z: 24.13, ry: 0, room: 'parts', groups: ['stage', 'backstage', 'dock'] },
+  { x: 48.4, y: 1.5, z: 44.13, ry: 0, room: 'kitchen', groups: ['kitchen', 'east', 'play'] },
+  { x: 31, y: 1.5 + BASEMENT_Y, z: 64.13, ry: 0, room: 'bHall', groups: ['west', 'basement'] },
+];
+
+BREAKER_GROUPS.forEach((g, i) => {
+  INTERACTABLES.push({
+    id: `breaker:${i}`,
+    type: 'breaker',
+    index: i,
+    x: 22.65,
+    y: BASEMENT_Y + (i < 6 ? 1.95 : 1.4),
+    z: 57.6 + (i % 6) * 0.96,
+    ry: 90,
+    room: 'bBreaker',
+    label: `${g.id} breaker`,
+  });
+});
+FUSE_BOXES.forEach((f, i) => INTERACTABLES.push({ id: `fusebox:${i}`, type: 'fuseBox', index: i, x: f.x, y: f.y, z: f.z, ry: f.ry, room: f.room, label: `Fuse box ${i + 1}` }));
+
+/** Plates on tables that can be birthday tables; the night picks five. */
+export const PLATE_TABLES = PROPS.filter((p) => p.type === 'table' && (p.room === 'dining' || p.room === 'party1' || p.room === 'party3'));
+PLATE_TABLES.forEach((t, i) => INTERACTABLES.push({ id: `plate:${i}`, type: 'plate', index: i, x: t.x, y: 0.85, z: t.z, ry: 0, room: t.room, label: 'Birthday plate' }));
+
+export const ITEM_SPAWNS: ItemSpawnDef[] = [
+  // Supply closet: the reliable shelf.
+  { x: 29, y: 1.1, z: 53.6, room: 'supply', types: ['fuse'], guaranteed: 'fuse' },
+  { x: 29, y: 1.1, z: 54.6, room: 'supply', types: ['fuse'], guaranteed: 'fuse' },
+  { x: 35.4, y: 1.1, z: 53.8, room: 'supply', types: ['battery'], guaranteed: 'battery' },
+  { x: 35.4, y: 1.1, z: 55.0, room: 'supply', types: ['battery'], guaranteed: 'battery' },
+  // Cupcakes on the decorating station.
+  ...[0, 1, 2, 3, 4].map((i): ItemSpawnDef => ({ x: 50.7, y: 1.05, z: 47.4 + i * 0.8, room: 'kitchen', types: ['cupcake'], guaranteed: 'cupcake' })),
+  // Random spots around the building.
+  { x: 6, y: 0.8, z: 54, room: 'lounge', types: ['battery', 'fuse'] },
+  { x: 25.8, y: 0.83, z: 49.3, room: 'office', types: ['battery'] },
+  { x: 16, y: 0.05, z: 57.5, room: 'utility', types: ['fuse', 'battery'] },
+  { x: 40, y: 0.05, z: 57.5, room: 'utility', types: ['fuse'] },
+  { x: 80, y: 1.25, z: 54.5, room: 'dock', types: ['fuse', 'battery'] },
+  { x: 60, y: 1.0, z: 31, room: 'backstage', types: ['fuse', 'battery'] },
+  { x: 40, y: 1.1, z: 6.8, room: 'lobby', types: ['battery'] },
+  { x: 55, y: 0.83, z: 51.2, room: 'manager', types: ['battery', 'fuse'] },
+  { x: 26, y: 1.15, z: 2.0, room: 'prize', types: ['battery'] },
+  { x: 58, y: 2.05, z: 59.4, room: 'bServer', types: ['fuse'] },
+  { x: 12, y: 1.65 + BASEMENT_Y, z: 58, room: 'bOld', types: ['battery'] },
+  { x: 72, y: 0.05, z: 30, room: 'parts', types: ['fuse'] },
+];

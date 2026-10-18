@@ -10,6 +10,8 @@ function setup(aggression = 10, opts: { lit?: string[] } = {}): { sim: FrSim; p:
   const a = sim.agents[0];
   if (opts.lit) {
     sim.power.main = true;
+    sim.night.breakers.fill(true);
+    sim.night.blown.clear();
     for (const c of opts.lit) sim.power.circuits.add(c as never);
   }
   return { sim, p, a };

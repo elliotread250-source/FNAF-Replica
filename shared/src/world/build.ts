@@ -1,5 +1,5 @@
 import { createRng, next } from '../rng';
-import { HIDE_SPECS, INTERACTABLES, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
+import { HIDE_SPECS, INTERACTABLES, ITEM_SPAWNS, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
 import type {
   AudioZone,
   Box,
@@ -319,6 +319,7 @@ export function buildLevel(): Level {
     lights,
     interactables: INTERACTABLES,
     spawns: SPAWNS,
+    itemSpawns: ITEM_SPAWNS,
     hidingSpots: HIDE_SPECS.map((h, id) => ({
       ...h,
       id,

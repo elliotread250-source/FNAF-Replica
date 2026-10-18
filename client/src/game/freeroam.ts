@@ -3,6 +3,8 @@ import {
   FR,
   FrSim,
   IDLE_CMD,
+  BREAKER_GROUPS,
+  FUSE_BOXES,
   eyeHeight,
   makeAgent,
   stepBody,
@@ -21,6 +23,7 @@ import {
 } from '@fnaf/shared';
 import { getRenderer } from '../render/renderer';
 import { WorldRender, type PowerView } from '../render/world/world';
+import { NightVisuals } from '../render/world/nightVisuals';
 import { volumetricCone } from '../render/fx/effects';
 import { buildCharacter, type CharacterRig } from '../render/characters/build';
 import { Jumpscare } from '../render/scenes/jumpscare';
@@ -82,7 +85,13 @@ const HIDE_VERB: Record<string, string> = {
 
 const ME = 'me';
 
-type Target = { kind: 'door'; door: FrDoorDef } | { kind: 'item'; item: InteractableDef } | { kind: 'hide'; spot: HidingSpotDef } | { kind: 'revive'; pid: string } | null;
+type Target =
+  | { kind: 'door'; door: FrDoorDef }
+  | { kind: 'item'; item: InteractableDef }
+  | { kind: 'hide'; spot: HidingSpotDef }
+  | { kind: 'revive'; pid: string }
+  | { kind: 'pickup'; id: number; type: string }
+  | null;
 
 interface RemoteView {
   rig: GuardRig;
@@ -134,6 +143,9 @@ export class FreeRoam {
     downed: HTMLElement;
     card: HTMLElement;
     debug: HTMLElement;
+    inv: HTMLElement;
+    clip: HTMLElement;
+    ring: HTMLElement;
   };
   private target: Target = null;
   private mapOpen = false;
@@ -163,6 +175,8 @@ export class FreeRoam {
   private snapAt = 0;
   private snapGap = 1 / FR.SNAPSHOT_HZ;
   private pendingEnd: NightEnd | null = null;
+  private nightVis: NightVisuals;
+  private clipboardOpen = false;
   /** Test and debug access, only wired when explicitly asked for. */
   readonly debug = {
     teleport: (x: number, z: number, y = 0, yaw = this.yaw, pitch = 0) => {
@@ -193,6 +207,7 @@ export class FreeRoam {
       this.ui.pause.style.display = 'none';
     },
     act: (a: FrAct) => (this.actQueued = a),
+    clip: (open: boolean) => (this.clipboardOpen = open),
     remotes: () => [...this.remotes.entries()].filter(([, v]) => v.rig.root.visible).map(([id]) => id),
     powerState: () => ({ main: this.sim.power.main, circuits: [...this.sim.power.circuits] }),
     agent: (id: string, x: number, z: number, y = 0, yaw = 0) => {
@@ -225,6 +240,15 @@ export class FreeRoam {
     const r = getRenderer();
     this.render = new WorldRender(sim.level, r.quality);
     this.scene.add(this.render.root);
+    this.nightVis = new NightVisuals(this.sim);
+    this.scene.add(this.nightVis.root);
+    if (net) {
+      const n = this.sim.night;
+      n.loads = net.loads;
+      n.band = net.band;
+      n.plates = net.plates;
+      n.requiredZones = net.requiredZones as CircuitId[];
+    }
     this.scene.background = new THREE.Color('#020204');
     this.scene.fog = new THREE.FogExp2('#050608', 0.03);
     this.buildFlashlight(r.shadowSize);
@@ -299,6 +323,9 @@ export class FreeRoam {
     const downed = h('div', { class: 'fr-downed' }, h('div', { class: 'fr-downed-text' }));
     const card = h('div', { class: 'fr-card' });
     const debug = h('pre', { class: 'fr-debug' });
+    const inv = h('div', { class: 'fr-inv' });
+    const clip = h('div', { class: 'fr-clip' });
+    const ring = h('div', { class: 'fr-ring' });
     const pause = h(
       'div',
       { class: 'fr-pause' },
@@ -306,13 +333,13 @@ export class FreeRoam {
       h(
         'p',
         null,
-        'Click to look around. WASD move, Shift run, C crouch, X crawl, Space jump or vault (hold Space while hidden to hold your breath), E interact or hide, F flashlight, Q and R lean, M map. Esc releases the mouse.',
+        'Click to look around. WASD move, Shift run, C crouch, X crawl, Space jump or vault (hold Space while hidden to hold your breath), E interact or hide (hold E to wind, fix or revive), F flashlight, B battery, G drop, Tab clipboard, Q and R lean, M map. Esc releases the mouse.',
       ),
       h('button', { class: 'btn', onclick: (e: Event) => (e.stopPropagation(), this.onExit()) }, 'Leave the building'),
     );
-    const wrap = h('div', { class: 'fr-hud pass' }, hideView, h('div', { class: 'fr-cross' }), prompt, room, stamina, breath, hint, clock, map, downed, card, debug, pause);
+    const wrap = h('div', { class: 'fr-hud pass' }, hideView, h('div', { class: 'fr-cross' }), ring, prompt, room, stamina, breath, hint, clock, inv, clip, map, downed, card, debug, pause);
     root.appendChild(wrap);
-    this.ui = { prompt, room, stamina, hint, clock, map, root: wrap, pause, hideView, breath, downed, card, debug };
+    this.ui = { prompt, room, stamina, hint, clock, map, root: wrap, pause, hideView, breath, downed, card, debug, inv, clip, ring };
   }
 
   private bind(): void {
@@ -344,6 +371,12 @@ export class FreeRoam {
         audio.play('click', { gain: 0.5 });
       }
       if (e.code === 'KeyM') this.toggleMap();
+      if (e.code === 'KeyB') this.actQueued = { type: 'battery' };
+      if (e.code === 'KeyG') this.actQueued = { type: 'drop' };
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        this.clipboardOpen = true;
+      }
       if (e.code === 'KeyE') this.interact();
       if (e.code === 'F9' && (store.config.testHooks || ['localhost', '127.0.0.1'].includes(location.hostname))) {
         this.debugOn = !this.debugOn;
@@ -354,7 +387,10 @@ export class FreeRoam {
         if (spot.exits.length > 1) this.actQueued = { type: 'unhide', exit: e.code === 'KeyA' ? 0 : 1 };
       }
     };
-    const onUp = (e: KeyboardEvent) => this.keys.delete(e.code);
+    const onUp = (e: KeyboardEvent) => {
+      this.keys.delete(e.code);
+      if (e.code === 'Tab') this.clipboardOpen = false;
+    };
     const onBlur = () => this.keys.clear();
     canvas.addEventListener('click', onClick);
     this.ui.pause.addEventListener('click', onClick);
@@ -415,6 +451,7 @@ export class FreeRoam {
     this.updateAgents(this.net ? Math.min(1.2, (performance.now() / 1000 - this.snapAt) / Math.max(0.02, this.snapGap)) : a, dt);
     if (this.net) this.updateRemotes(dt);
     this.updateWorld(dt);
+    this.nightVis.update(dt);
     this.updateHud(dt);
     this.shake = Math.max(0, this.shake - dt * 2);
     u.darkness.value = this.me.ghost ? 0.25 : 0;
@@ -505,6 +542,16 @@ export class FreeRoam {
     sim.doorTarget.set(s.targets);
     sim.power.main = s.power.main;
     sim.power.circuits = new Set(s.power.circuits as CircuitId[]);
+    const n = sim.night;
+    n.power = s.night.power;
+    n.breakers = s.night.breakers;
+    n.blown = new Set(s.night.blown);
+    n.masterCooldown = s.night.cooldown;
+    n.musicBox = s.night.musicBox;
+    n.musicFailed = s.night.musicFailed;
+    n.items = s.night.items.map((i) => ({ ...i, type: i.type as 'fuse' }));
+    n.frontUnlocked = s.night.frontUnlocked;
+    n.powerOut = s.night.powerOut;
     // Our own state: take the server's word, then replay what it hasn't seen yet.
     const me = this.me;
     const m = s.me;
@@ -516,6 +563,8 @@ export class FreeRoam {
     me.ghost = m.ghost;
     me.revives = m.revives;
     me.reviveProgress = m.reviveProgress;
+    me.useProgress = m.useProgress;
+    me.exited = m.exited;
     const before = { x: me.body.x, y: me.body.y, z: me.body.z };
     Object.assign(me.body, m.body);
     this.history = this.history.filter((h) => h.seq > s.ack);
@@ -634,6 +683,7 @@ export class FreeRoam {
       flash: this.flashOn,
       breath: hidden && k.has('Space'),
       hold: k.has('KeyE') && this.target?.kind === 'revive',
+      use: k.has('KeyE') && this.target?.kind === 'item' && (this.target.item.type === 'musicBox' || this.target.item.type === 'fuseBox') ? this.target.item.id : undefined,
       act: this.actQueued ?? undefined,
     };
     this.jumpQueued = false;
@@ -723,6 +773,61 @@ export class FreeRoam {
         break;
       case 'end':
         this.endCard(e.won);
+        break;
+      case 'breaker':
+        audio.play('click', { gain: 0.6, rate: 0.7 });
+        break;
+      case 'master':
+        if (e.result === 'on') audio.play('sparks', { gain: 1 });
+        else if (e.result === 'trip') {
+          audio.play('sparks', { gain: 1, rate: 0.7 });
+          audio.play('door_slam', { gain: 0.9 });
+          this.say(`BANG. The master trips. Load ${e.load} is too much. It needs 15 seconds to cool down.`);
+          this.shake = 1;
+        } else if (e.result === 'drop') {
+          audio.play('door_slam', { gain: 0.4, rate: 1.4 });
+          this.say(`The lever drops back with a clunk. Load ${e.load} isn't enough.`);
+        } else this.say('Still cooling down.');
+        break;
+      case 'fusebox':
+        if (mine) this.say(e.blown ? `${e.blown} blown fuse${e.blown > 1 ? 's' : ''}. ${e.hasFuse ? 'Hold E to replace one.' : 'You need a fuse.'}` : 'All fuses are good.');
+        break;
+      case 'fuseFixed':
+        audio.play('click', { gain: 0.9, rate: 1.3 });
+        if (mine) this.say('Fuse in. The lamp goes green.');
+        break;
+      case 'musicbox':
+        audio.play('chime6', { gain: 0.4, rate: 2 });
+        if (e.level <= 15) this.say(`THE MUSIC BOX! ${e.level}%`);
+        break;
+      case 'musicEmpty':
+        audio.play('sting', { gain: 0.8, rate: 0.6 });
+        this.say('The music box has stopped.');
+        break;
+      case 'pickup':
+        if (mine) audio.play('equip', { gain: 0.5 });
+        break;
+      case 'battery':
+        if (mine) audio.play('click', { gain: 0.6 });
+        break;
+      case 'cupcake':
+        audio.play('coin', { gain: 0.35 });
+        if (mine) this.say(`Cupcake placed (${e.placed}/5)`);
+        break;
+      case 'cupcakesDone':
+        audio.play('achievement', { gain: 0.7 });
+        this.say('Happy birthday! Every table has its cupcake.');
+        break;
+      case 'frontUnlocked':
+        audio.play('door_slam', { gain: 1, rate: 0.6 });
+        this.say('Chains rattle at the front doors. They are open. You can leave early.');
+        break;
+      case 'exit':
+        if (mine) this.say('You step out into the rain. You made it.');
+        break;
+      case 'powerOut':
+        audio.play('door_slam', { gain: 1, rate: 0.5 });
+        this.say('The power is gone.');
         break;
       default:
         break;
@@ -915,6 +1020,10 @@ export class FreeRoam {
         if (best) return best;
       }
     }
+    for (const it of this.sim.night.items) {
+      if (it.holder || it.plate >= 0 || it.y < -100) continue;
+      consider(it.x, it.y + 0.05, it.z, 0.3, () => ({ kind: 'pickup', id: it.id, type: it.type }), false);
+    }
     for (const item of this.sim.level.interactables) consider(item.x, item.y, item.z, 0.6, () => ({ kind: 'item', item }));
     for (const spot of this.sim.level.hidingSpots) {
       const fy = this.sim.level.roomById[spot.room].floorY;
@@ -943,6 +1052,7 @@ export class FreeRoam {
       if (t.door.kind === 'shutter') return `[E] ${open ? 'Close' : 'Open'} ${t.door.name}`;
       return `[E] ${open ? 'Close' : 'Open'} ${t.door.name.toLowerCase()}`;
     }
+    if (t.kind === 'pickup') return `[E] Pick up ${t.type === 'battery' ? 'battery pack' : t.type}`;
     if (t.kind === 'revive') {
       const p = this.sim.players.get(t.pid);
       const pct = p ? Math.round((p.reviveProgress / FR.player.REVIVE_TIME) * 100) : 0;
@@ -953,7 +1063,28 @@ export class FreeRoam {
       return full ? 'Someone is already in there' : `[E] ${HIDE_VERB[t.spot.type] ?? 'Hide'}`;
     }
     const i = t.item;
-    if (i.type === 'mainBreaker') return `[E] ${this.sim.power.main ? 'Pull' : 'Throw'} the main breaker`;
+    const n = this.sim.night;
+    if (i.type === 'mainBreaker') {
+      if (this.sim.power.main) return '[E] Cut the main power';
+      return `[E] Pull the master lever (load ${n.loadOn()}, green ${n.band[0]} to ${n.band[1]})`;
+    }
+    if (i.type === 'breaker') {
+      const k = i.index ?? 0;
+      return `[E] ${i.label} ${n.breakers[k] ? 'OFF' : 'ON'} (load ${n.loads[k]})`;
+    }
+    if (i.type === 'fuseBox') {
+      const box = FUSE_BOXES[i.index ?? 0];
+      const blown = box.groups.filter((g) => n.blown.has(BREAKER_GROUPS.findIndex((b) => b.id === g))).length;
+      if (!blown) return `${i.label}: all fuses good`;
+      return n.has(this.me, 'fuse') ? `Hold [E] Replace a blown fuse (${blown} blown)` : `${i.label}: ${blown} blown. You need a fuse.`;
+    }
+    if (i.type === 'musicBox') return `Hold [E] Wind the music box (${Math.round(n.musicBox)}%)`;
+    if (i.type === 'plate') {
+      if (!n.plates.includes(i.index ?? -1)) return '';
+      if (n.items.some((q) => q.plate === i.index)) return 'A cupcake, candle lit';
+      return n.has(this.me, 'cupcake') ? '[E] Place a cupcake' : 'Birthday plate: bring a cupcake';
+    }
+    if (i.type === 'frontDoors') return n.frontUnlocked ? '[E] Leave through the front doors' : 'Chained shut until 5 AM';
     if (i.type === 'zoneSwitch') return `[E] ${CIRCUIT_NAMES[i.circuit ?? ''] ?? i.label} lights ${this.sim.power.circuits.has(i.circuit as CircuitId) ? 'OFF' : 'ON'}`;
     if (i.type === 'honk') return '[E] Honk';
     return `[E] ${i.label}`;
@@ -972,6 +1103,11 @@ export class FreeRoam {
     const t = this.target;
     if (!t) return;
     if (t.kind === 'revive') return;
+    if (t.kind === 'pickup') {
+      this.actQueued = { type: 'pickup', id: t.id };
+      return;
+    }
+    if (t.kind === 'item' && t.item.type === 'musicBox') return;
     if (t.kind === 'door') this.actQueued = { type: 'door', id: t.door.id };
     else if (t.kind === 'hide') this.actQueued = { type: 'hide', id: t.spot.id };
     else this.actQueued = { type: 'item', id: t.item.id };
@@ -1013,6 +1149,12 @@ export class FreeRoam {
       this.ui.clock.textContent = '';
       this.ui.hint.textContent = '';
     }
+    this.drawInventory();
+    this.drawClipboard();
+    const holding = this.keys.has('KeyE') && this.target?.kind === 'item' && this.target.item.type === 'fuseBox';
+    const ringPct = holding ? this.me.useProgress / FR.objectives.FUSE_INSERT : this.target?.kind === 'revive' ? (this.sim.players.get(this.target.pid)?.reviveProgress ?? 0) / FR.player.REVIVE_TIME : 0;
+    this.ui.ring.style.display = ringPct > 0.01 ? 'block' : 'none';
+    this.ui.ring.style.background = `conic-gradient(rgba(240,234,216,0.85) ${ringPct * 360}deg, rgba(240,234,216,0.12) 0deg)`;
     if (this.mapOpen) this.drawMap();
     if (this.debugOn) {
       const lines = this.sim.agents.map((a) => {
@@ -1046,6 +1188,42 @@ export class FreeRoam {
       ),
     );
     c.style.display = 'flex';
+  }
+
+  private invKey = '';
+  private drawInventory(): void {
+    const items = this.sim.night.items.filter((i) => i.holder === this.myId);
+    const key = items.map((i) => i.type).join(',') + `|${Math.round(this.me.battery)}`;
+    if (key === this.invKey) return;
+    this.invKey = key;
+    const el = this.ui.inv;
+    el.textContent = '';
+    const label: Record<string, string> = { fuse: 'Fuse', battery: 'Battery', cupcake: 'Cupcake' };
+    for (let k = 0; k < 4; k++) el.appendChild(h('div', { class: `fr-slot ${items[k] ? items[k].type : ''}` }, items[k] ? label[items[k].type] ?? items[k].type : ''));
+    if (this.mode === 'night') el.appendChild(h('div', { class: 'fr-torch' }, `Torch ${Math.round(this.me.battery)}%`));
+  }
+
+  private clipKey = '';
+  private drawClipboard(): void {
+    const el = this.ui.clip;
+    el.style.display = this.clipboardOpen && this.mode === 'night' ? 'block' : 'none';
+    if (!this.clipboardOpen) return;
+    const objs = this.sim.night.objectives();
+    const team = [...this.sim.players.values()].map((p) => `${p.name}${p.ghost ? ' ✖' : p.downed ? ' (down)' : p.exited ? ' (out)' : ' ✓'}`);
+    const key = JSON.stringify([objs, team, this.sim.hour, Math.round(this.sim.night.power)]);
+    if (key === this.clipKey) return;
+    this.clipKey = key;
+    el.textContent = '';
+    const hour = this.sim.hour === 0 ? 12 : this.sim.hour;
+    el.append(
+      h('div', { class: 'fr-clip-head' }, `NIGHT ${this.sim.opts.night}  •  ${hour} AM  •  Power ${Math.round(this.sim.night.power)}%`),
+      h('div', { class: 'fr-clip-title' }, "Tonight's checklist"),
+      ...objs.map((o) => h('div', { class: `fr-clip-item ${o.done ? 'done' : ''} ${o.failed ? 'failed' : ''}` }, `${o.failed ? '✖' : o.done ? '☑' : '☐'} ${o.text}`)),
+      h('div', { class: 'fr-clip-title' }, 'Staff'),
+      h('div', { class: 'fr-clip-team' }, team.join('   ')),
+    );
+    if (this.sim.opts.night === 1)
+      el.append(h('div', { class: 'fr-clip-note' }, 'Day manager says: "aim for about 12 on the needle." The fuse boxes are in the utility corridor, parts, the kitchen and the basement hall.'));
   }
 
   private toggleMap(): void {

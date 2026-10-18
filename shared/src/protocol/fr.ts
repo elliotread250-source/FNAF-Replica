@@ -14,6 +14,9 @@ export const FrActZ = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hide'), id: z.number().int().min(0).max(255) }),
   z.object({ type: z.literal('unhide'), exit: z.number().int().min(0).max(3) }),
   z.object({ type: z.literal('revive'), pid: z.string().max(64) }),
+  z.object({ type: z.literal('pickup'), id: z.number().int().min(0).max(1000) }),
+  z.object({ type: z.literal('battery') }),
+  z.object({ type: z.literal('drop') }),
 ]);
 
 export const FrCmdZ = z.object({
@@ -27,6 +30,7 @@ export const FrCmdZ = z.object({
   flash: z.boolean(),
   breath: z.boolean(),
   hold: z.boolean().optional(),
+  use: z.string().max(40).optional(),
   act: FrActZ.optional(),
 });
 
@@ -46,6 +50,23 @@ export interface FrStart {
   hourSeconds: number;
   tick: number;
   testHooks: boolean;
+  /** Tonight's breaker labels, green band, birthday tables and required zones. */
+  loads: number[];
+  band: [number, number];
+  plates: number[];
+  requiredZones: string[];
+}
+
+export interface FrSnapNight {
+  power: number;
+  breakers: boolean[];
+  blown: number[];
+  cooldown: number;
+  musicBox: number;
+  musicFailed: boolean;
+  items: { id: number; type: string; x: number; y: number; z: number; holder: string | null; plate: number }[];
+  frontUnlocked: boolean;
+  powerOut: boolean;
 }
 
 export interface FrSnapPlayer {
@@ -86,6 +107,8 @@ export interface FrSnapMe {
   ghost: boolean;
   revives: number;
   reviveProgress: number;
+  useProgress: number;
+  exited: boolean;
 }
 
 export interface FrSnap {
@@ -101,6 +124,7 @@ export interface FrSnap {
   /** Door target per door id (1 = opening/open). */
   targets: number[];
   power: { main: boolean; circuits: string[] };
+  night: FrSnapNight;
   ev: FrEvent[];
   over: { won: boolean } | null;
 }

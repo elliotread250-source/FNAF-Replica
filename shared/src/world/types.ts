@@ -159,7 +159,9 @@ export interface PropDef {
 
 export interface InteractableDef {
   id: string;
-  type: 'zoneSwitch' | 'mainBreaker' | 'door' | 'musicBox' | 'phone' | 'honk' | 'sign' | 'timeClock';
+  type: 'zoneSwitch' | 'mainBreaker' | 'breaker' | 'fuseBox' | 'plate' | 'frontDoors' | 'door' | 'musicBox' | 'phone' | 'honk' | 'sign' | 'timeClock';
+  /** Breaker, fuse box or plate number. */
+  index?: number;
   x: number;
   y: number;
   z: number;
@@ -169,6 +171,19 @@ export interface InteractableDef {
   label: string;
   circuit?: CircuitId;
   door?: number;
+}
+
+export type ItemType = 'fuse' | 'battery' | 'cupcake';
+
+export interface ItemSpawnDef {
+  x: number;
+  y: number;
+  z: number;
+  room: string;
+  /** Item types this spot can hold. */
+  types: ItemType[];
+  /** Always filled at night start with this item. */
+  guaranteed?: ItemType;
 }
 
 export interface SpawnDef {
@@ -249,6 +264,7 @@ export interface Level {
   interactables: InteractableDef[];
   spawns: SpawnDef[];
   hidingSpots: HidingSpotDef[];
+  itemSpawns: ItemSpawnDef[];
   audio: AudioZone[];
   bounds: { x1: number; z1: number; x2: number; z2: number };
   /** room id -> adjacent room ids through openings (for graph tests and the AI). */

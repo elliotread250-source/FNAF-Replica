@@ -6,6 +6,7 @@ import { CollisionWorld } from './collision';
 import { eyeHeight, newBody, stepBody, type Body, type FrInput, type Stance } from './controller';
 import { NavGrid } from './nav';
 import { Agent, makeAgent, sawHiding, tickAgent } from './ai';
+import { NightState } from './night';
 
 // The free-roam simulation. Deterministic given a seed and the input log; runs headless in Node (server,
 // tests, balance script) and in the browser (solo play). It owns players, doors, power, noise, the clock
@@ -18,7 +19,10 @@ export type FrAct =
   | { type: 'item'; id: string }
   | { type: 'hide'; id: number }
   | { type: 'unhide'; exit: number }
-  | { type: 'revive'; pid: string };
+  | { type: 'revive'; pid: string }
+  | { type: 'pickup'; id: number }
+  | { type: 'battery' }
+  | { type: 'drop' };
 
 export interface FrCmd extends FrInput {
   flash: boolean;
@@ -26,6 +30,8 @@ export interface FrCmd extends FrInput {
   act?: FrAct;
   /** Held interaction (revive) is still being held. */
   hold?: boolean;
+  /** Id of the thing being held down (music box crank, fuse box). */
+  use?: string;
 }
 
 export interface HiddenState {
@@ -59,6 +65,11 @@ export interface FrPlayer {
   cmd: FrCmd;
   /** Seconds in the current hiding spot, for anti-camping. */
   hiddenFor: number;
+  /** Seconds into the current held interaction. */
+  useProgress: number;
+  useTarget: string | null;
+  /** Left through the front doors early. */
+  exited: boolean;
 }
 
 export type FrEvent =
@@ -84,7 +95,21 @@ export type FrEvent =
   | { t: 'relocate'; agent: string }
   | { t: 'hour'; hour: number }
   | { t: 'end'; won: boolean }
-  | { t: 'step'; pid: string; r: number };
+  | { t: 'step'; pid: string; r: number }
+  | { t: 'breaker'; index: number; on: boolean }
+  | { t: 'master'; result: 'on' | 'trip' | 'drop' | 'cooldown'; load: number }
+  | { t: 'fusebox'; pid: string; index: number; blown: number; hasFuse: boolean }
+  | { t: 'fuseFixed'; pid: string; group: number }
+  | { t: 'musicbox'; level: number }
+  | { t: 'musicEmpty' }
+  | { t: 'pickup'; pid: string; item: number; type: string }
+  | { t: 'drop'; pid: string; item: number }
+  | { t: 'battery'; pid: string }
+  | { t: 'cupcake'; pid: string; plate: number; placed: number }
+  | { t: 'cupcakesDone' }
+  | { t: 'frontUnlocked' }
+  | { t: 'exit'; pid: string }
+  | { t: 'powerOut' };
 
 export interface FrSimOptions {
   seed: number;
@@ -113,6 +138,7 @@ export class FrSim {
   readonly agents: Agent[] = [];
   readonly doorTarget: Float32Array;
   readonly power = { main: false, circuits: new Set<CircuitId>(['always']) };
+  readonly night: NightState;
   /** Events produced during the last tick. */
   events: FrEvent[] = [];
   /** Noise heard this tick (also included in events). */
@@ -139,6 +165,7 @@ export class FrSim {
       this.power.main = true;
       for (const r of this.level.rooms) this.power.circuits.add(r.circuit);
     }
+    this.night = new NightState(this, opts.mode === 'night');
   }
 
   // ---- Setup -------------------------------------------------------------------------------------
@@ -166,6 +193,9 @@ export class FrSim {
       lastTell: -100,
       cmd: { ...IDLE_CMD, yaw: s.yaw },
       hiddenFor: 0,
+      useProgress: 0,
+      useTarget: null,
+      exited: false,
     };
     this.players.set(id, p);
     return p;
@@ -202,7 +232,7 @@ export class FrSim {
   circuitOn(c: CircuitId): boolean {
     if (c === 'always') return true;
     if (c === 'breaker') return this.power.main;
-    return this.power.main && this.power.circuits.has(c);
+    return this.power.main && this.power.circuits.has(c) && this.night.groupLive(c);
   }
 
   roomAt(x: number, y: number, z: number): string | null {
@@ -217,7 +247,7 @@ export class FrSim {
   }
 
   alive(p: FrPlayer): boolean {
-    return !p.ghost && !p.downed;
+    return !p.ghost && !p.downed && !p.exited;
   }
 
   /** Can this living player currently see the point (frustum, range, occlusion, light)? */
@@ -286,6 +316,7 @@ export class FrSim {
     this.tickN++;
 
     this.tickDoors(dt);
+    this.night.tick(dt);
     for (const p of this.players.values()) this.tickPlayer(p, dt);
     for (const a of this.agents) tickAgent(this, a, dt);
     this.tickClock();
@@ -324,6 +355,7 @@ export class FrSim {
     p.cmd = { ...c, act: undefined, jump: false };
     p.flashOn = c.flash && !p.downed;
     if (p.flashOn && this.opts.mode === 'night') p.battery = Math.max(0, p.battery - (FR.flashlight.DRAIN * dt) / 3);
+    if (p.exited) return;
     if (p.ghost) {
       this.moveGhost(p, c, dt);
       return;
@@ -356,6 +388,15 @@ export class FrSim {
     p.holdingBreath = false;
     // Revive: holding E near a downed teammate.
     if (c.hold) this.tickRevive(p, dt);
+    // Held interactions.
+    if (c.use) {
+      if (p.useTarget !== c.use) p.useProgress = 0;
+      p.useTarget = c.use;
+      if (this.night.hold(p, c.use, dt) < 0) p.useProgress = 0;
+    } else {
+      p.useTarget = null;
+      p.useProgress = 0;
+    }
   }
 
   private moveGhost(p: FrPlayer, c: FrCmd, dt: number): void {
@@ -436,6 +477,18 @@ export class FrSim {
       return;
     }
     if (p.hidden) return;
+    if (act.type === 'pickup') {
+      this.night.pickup(p, act.id);
+      return;
+    }
+    if (act.type === 'battery') {
+      this.night.useBattery(p);
+      return;
+    }
+    if (act.type === 'drop') {
+      this.night.drop(p);
+      return;
+    }
     if (act.type === 'hide') {
       const spot = this.level.hidingSpots[act.id];
       if (!spot) return;
@@ -469,13 +522,11 @@ export class FrSim {
     if (act.type === 'item') {
       const it = this.level.interactables.find((i) => i.id === act.id);
       if (!it || Math.hypot(it.x - b.x, it.z - b.z) > reach || Math.abs(it.y - (b.y + 1.2)) > 2) return;
-      if (it.type === 'mainBreaker') {
-        this.power.main = !this.power.main;
-        this.emit({ t: 'power', main: this.power.main });
-        this.noise(it.x, it.y, it.z, this.power.main ? 12 : FR.noise.BREAKER_TRIP, p.id);
-      } else if (it.type === 'zoneSwitch' && it.circuit) {
-        if (!this.power.main) {
-          this.emit({ t: 'nopower', pid: p.id, text: 'Nothing happens. The main breaker is off.' });
+      if (this.night.press(p, it.id)) return;
+      if (it.type === 'zoneSwitch' && it.circuit) {
+        const err = this.night.zoneSwitch(it.circuit);
+        if (err) {
+          this.emit({ t: 'nopower', pid: p.id, text: err });
           return;
         }
         const on = !this.power.circuits.has(it.circuit);
@@ -508,6 +559,15 @@ export class FrSim {
     if (solo) p.revives++;
   }
 
+  /** Walked out through the unlocked front doors: safe, and paid a bonus. */
+  exitPlayer(p: FrPlayer): void {
+    if (p.exited || !this.alive(p)) return;
+    p.exited = true;
+    p.hidden = null;
+    this.night.dropAll(p);
+    this.emit({ t: 'exit', pid: p.id });
+  }
+
   private toGhost(p: FrPlayer): void {
     const solo = (this.opts.playerCount ?? this.players.size) <= 1;
     if (solo && p.downed && p.catches < 2) {
@@ -521,6 +581,7 @@ export class FrSim {
     p.downed = false;
     p.ghost = true;
     p.hidden = null;
+    this.night.dropAll(p);
     this.emit({ t: 'ghost', pid: p.id });
   }
 
@@ -533,8 +594,9 @@ export class FrSim {
       if (bump) for (const a of this.agents) a.aggression = Math.min(20, a.aggression + (bump[a.id] ?? 0));
     }
     if (this.opts.mode === 'night') {
-      if (this.hour >= FR.HOURS_PER_NIGHT) this.end(true);
-      else if (this.players.size && [...this.players.values()].every((p) => p.ghost)) this.end(false);
+      const all = [...this.players.values()];
+      if (this.hour >= FR.HOURS_PER_NIGHT) this.end(all.some((p) => !p.ghost));
+      else if (all.length && all.every((p) => p.ghost || p.exited)) this.end(all.some((p) => p.exited));
     }
   }
 

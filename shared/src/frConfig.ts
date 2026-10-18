@@ -127,7 +127,40 @@ export const FR = {
     FAST_HOUR_SECONDS: 10,
   },
 
-  scaling: { AGGRESSION: { 1: 0.6, 2: 0.75, 3: 0.9, 4: 1.0 } as Record<number, number> },
+  scaling: {
+    AGGRESSION: { 1: 0.6, 2: 0.75, 3: 0.9, 4: 1.0 } as Record<number, number>,
+    MUSIC_BOX: { 1: 0.7, 2: 0.85, 3: 1.0, 4: 1.0 } as Record<number, number>,
+    FUSES: { 1: -1, 2: -1, 3: 0, 4: 0 } as Record<number, number>,
+  },
+
+  /** Power drain in percent per in-game hour (Part 5.1). */
+  power: {
+    START: { 1: 100, 2: 90, 3: 85, 4: 75, 5: 70, 6: 60 } as Record<number, number>,
+    BASE: 4,
+    PER_CIRCUIT: 1.5,
+    SHUTTER: 3,
+    OFFICE_DOOR: 3,
+    OFFICE_LIGHT: 2,
+    MONITOR: 2,
+    ALWAYS: 1,
+    GENERATOR_BONUS: 20,
+    BREAKER_BAND: 3,
+    BREAKER_LOW: [9, 11] as Pair,
+    BREAKER_COOLDOWN: 15,
+  },
+
+  musicBox: { UNWIND: { 1: 0.35, 2: 0.4, 3: 0.5, 4: 0.58, 5: 0.65, 6: 0.8 } as Record<number, number>, WIND: 10, WIND_REMOTE: 4, WARN: [30, 15, 5] },
+
+  objectives: {
+    BLOWN_FUSES: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 6 } as Record<number, number>,
+    ZONES_REQUIRED: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 6 } as Record<number, number>,
+    FUSE_INSERT: 2,
+    PLACE_TIME: 1,
+    CUPCAKES: 5,
+    EARLY_EXIT_HOUR: 5,
+    EARLY_EXIT_BONUS: 0.25,
+    RANDOM_ITEMS: { battery: [3, 6] as Pair, fuse: [2, 4] as Pair },
+  },
 } as const;
 
 type Pair = [number, number];

@@ -94,6 +94,10 @@ export class FrMatch {
       hourSeconds: this.sim.hourSeconds,
       tick: this.sim.tickN,
       testHooks: this.o.testHooks,
+      loads: this.sim.night.loads,
+      band: this.sim.night.band,
+      plates: this.sim.night.plates,
+      requiredZones: this.sim.night.requiredZones,
     };
     this.o.send(pid, 'fr:start', start);
   }
@@ -223,6 +227,8 @@ export class FrMatch {
             ghost: me.ghost,
             revives: me.revives,
             reviveProgress: me.reviveProgress,
+            useProgress: me.useProgress,
+            exited: me.exited,
           }
         : (undefined as never),
       players,
@@ -230,6 +236,17 @@ export class FrMatch {
       doors: Array.from(sim.world.doorOpen, round),
       targets: Array.from(sim.doorTarget),
       power: { main: sim.power.main, circuits: [...sim.power.circuits] },
+      night: {
+        power: round(sim.night.power),
+        breakers: sim.night.breakers,
+        blown: [...sim.night.blown],
+        cooldown: round(sim.night.masterCooldown),
+        musicBox: round(sim.night.musicBox),
+        musicFailed: sim.night.musicFailed,
+        items: sim.night.items.map((i) => ({ ...i, x: round(i.x), y: round(i.y), z: round(i.z) })),
+        frontUnlocked: sim.night.frontUnlocked,
+        powerOut: sim.night.powerOut,
+      },
       ev,
       over: sim.over,
     };
@@ -283,6 +300,7 @@ export class FrMatch {
         const survived = won && !p.ghost;
         let tokens = won ? R.NIGHTSHIFT_WIN_BASE + R.NIGHTSHIFT_WIN_PER_NIGHT * Math.min(6, n) : R.LOSS_BASE + R.LOSS_PER_HOUR * this.sim.hour;
         if (won && p.ghost) tokens = Math.round(tokens / 2);
+        if (p.exited) tokens = Math.round(tokens * (1 + FR.objectives.EARLY_EXIT_BONUS));
         if (full) tokens = Math.round(tokens * (1 + R.FULL_LOBBY_BONUS));
         return {
           pid: p.id,

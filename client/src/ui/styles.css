@@ -186,3 +186,18 @@ a { color: var(--red-hi); }
 .fr-downed-text { font-family: 'VT323', monospace; font-size: 48px; color: #ff4a4a; text-shadow: 0 0 10px #000; }
 .fr-card { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.82); gap: 12px; }
 .fr-debug { position: absolute; left: 10px; top: 10px; display: none; margin: 0; padding: 8px; max-width: 60vw; font: 12px/1.3 monospace; color: #9f9; background: rgba(0, 0, 0, 0.6); white-space: pre-wrap; pointer-events: none; }
+.fr-inv { position: absolute; right: 24px; bottom: 48px; display: flex; gap: 6px; align-items: flex-end; }
+.fr-slot { width: 64px; height: 44px; border: 1px solid rgba(240, 234, 216, 0.25); background: rgba(0, 0, 0, 0.35); font: 15px 'VT323', monospace; color: #f0ead8; display: flex; align-items: center; justify-content: center; }
+.fr-slot.fuse { border-color: #ff9a3a; }
+.fr-slot.battery { border-color: #3aff6a; }
+.fr-slot.cupcake { border-color: #ff8ab8; }
+.fr-torch { font: 18px 'VT323', monospace; color: rgba(240, 234, 216, 0.7); margin-left: 8px; }
+.fr-clip { position: absolute; left: 50%; top: 50%; width: min(560px, 92vw); transform: translate(-50%, -50%) rotate(-1.5deg); display: none; background: #efe6cf; color: #2a2016; padding: 22px 26px; box-shadow: 0 0 40px #000; border-top: 26px solid #6a4a2a; font-family: 'Courier Prime', monospace; }
+.fr-clip-head { font-size: 13px; letter-spacing: 0.05em; color: #6a5a40; }
+.fr-clip-title { font: 26px 'Special Elite', monospace; margin: 10px 0 4px; }
+.fr-clip-item { font-size: 17px; margin: 4px 0; }
+.fr-clip-item.done { color: #3a6a2a; text-decoration: line-through; }
+.fr-clip-item.failed { color: #a02a1a; }
+.fr-clip-team { font-size: 15px; }
+.fr-clip-note { margin-top: 10px; font-size: 13px; color: #6a5a40; font-style: italic; }
+.fr-ring { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; display: none; -webkit-mask: radial-gradient(circle, transparent 11px, #000 12px); mask: radial-gradient(circle, transparent 11px, #000 12px); }
