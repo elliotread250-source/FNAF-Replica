@@ -106,7 +106,7 @@ export interface OpeningDef {
 
 export type DoorKind = 'swing' | 'double' | 'shutter' | 'roller' | 'curtain' | 'glass' | 'exit';
 
-export interface DoorDef {
+export interface FrDoorDef {
   id: number;
   name: string;
   kind: DoorKind;
@@ -201,7 +201,7 @@ export interface Level {
   rooms: RoomDef[];
   roomById: Record<string, RoomDef>;
   openings: OpeningDef[];
-  doors: DoorDef[];
+  doors: FrDoorDef[];
   walls: WallRun[];
   /** Lintels above doorways and sills under windows, as wall runs for rendering. */
   lintels: WallRun[];

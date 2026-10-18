@@ -3,7 +3,7 @@
 // those walls. See docs/map.svg for the rendered plan and docs/DECISIONS.md for where this departs from the
 // hand-written coordinates in the prompt.
 
-import type { CircuitId, DoorDef, InteractableDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
+import type { CircuitId, FrDoorDef, InteractableDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
 
 export const BASEMENT_Y = -4.5;
 
@@ -73,7 +73,7 @@ export const ROOMS: RoomDef[] = [
   spec({ id: 'bServer', name: 'Camera Server Room', zone: 'B06', rects: [[54, 58, 62, 64]], ceilH: 2.8, style: 'basement', circuit: 'server', floorY: BASEMENT_Y }),
 ];
 
-type DoorOpts = Partial<Pick<DoorDef, 'kind' | 'locked' | 'hinge' | 'swing' | 'name' | 'circuit' | 'startsOpen' | 'height'>>;
+type DoorOpts = Partial<Pick<FrDoorDef, 'kind' | 'locked' | 'hinge' | 'swing' | 'name' | 'circuit' | 'startsOpen' | 'height'>>;
 
 export interface OpeningSpec {
   axis: 'x' | 'z';

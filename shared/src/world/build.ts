@@ -4,7 +4,7 @@ import type {
   AudioZone,
   Box,
   Collider,
-  DoorDef,
+  FrDoorDef,
   Flicker,
   LightDef,
   Level,
@@ -148,7 +148,7 @@ export function buildLevel(): Level {
 
   // 2. Openings and doors.
   const openings: OpeningDef[] = [];
-  const doors: DoorDef[] = [];
+  const doors: FrDoorDef[] = [];
   OPENING_SPECS.forEach((s, i) => {
     const doorSpec = s.door;
     const h =
