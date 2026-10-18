@@ -202,3 +202,13 @@ a { color: var(--red-hi); }
 .fr-clip-note { margin-top: 10px; font-size: 13px; color: #6a5a40; font-style: italic; }
 .fr-ring { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; display: none; -webkit-mask: radial-gradient(circle, transparent 11px, #000 12px); mask: radial-gradient(circle, transparent 11px, #000 12px); }
 .fr-itsme { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 120px 'Rubik Glitch', 'VT323', monospace; color: #ffd21a; background: rgba(30, 20, 0, 0.4); pointer-events: none; }
+.fr-office { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); display: none; gap: 8px; }
+.fr-obtn { font: 18px 'VT323', monospace; padding: 6px 12px; border: 1px solid rgba(240, 234, 216, 0.35); color: rgba(240, 234, 216, 0.8); background: rgba(0, 0, 0, 0.5); }
+.fr-obtn.on { border-color: #ff5a3a; color: #fff; background: rgba(120, 20, 10, 0.6); }
+.fr-cams { position: absolute; left: 24px; top: 18px; display: none; font-family: 'VT323', monospace; color: #cfe8d0; text-shadow: 0 0 4px #000; }
+.fr-cam-title { font-size: 30px; }
+.fr-cam-list { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 520px; }
+.fr-cam-list span { font-size: 18px; border: 1px solid rgba(207, 232, 208, 0.4); padding: 1px 6px; }
+.fr-cam-list span.on { background: rgba(207, 232, 208, 0.85); color: #000; }
+.fr-cam-help { margin-top: 8px; font-size: 18px; color: rgba(207, 232, 208, 0.75); }
+.fr-sub { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); max-width: min(900px, 90vw); text-align: center; font: var(--sub-size) 'Courier Prime', monospace; color: #f0ead8; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; }

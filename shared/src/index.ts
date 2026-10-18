@@ -33,3 +33,4 @@ export * from './sim/fr/nav';
 export * from './sim/fr/sim';
 export * from './sim/fr/ai';
 export * from './protocol/fr';
+export * from './content/frCalls';

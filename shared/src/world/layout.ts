@@ -3,7 +3,7 @@
 // those walls. See docs/map.svg for the rendered plan and docs/DECISIONS.md for where this departs from the
 // hand-written coordinates in the prompt.
 
-import type { CircuitId, FrDoorDef, InteractableDef, ItemSpawnDef, OpeningKind, PropDef, Rect, RoomDef, SpawnDef, StyleId } from './types';
+import type { CircuitId, FrDoorDef, InteractableDef, ItemSpawnDef, OpeningKind, PropDef, Rect, RoomDef, SecurityCameraDef, SpawnDef, StyleId } from './types';
 
 export const BASEMENT_Y = -4.5;
 
@@ -193,6 +193,9 @@ export const INTERACTABLES: InteractableDef[] = [
   sw('boiler', 'bBoiler', 40.1, 56, 90, 1.3 + BASEMENT_Y),
   { id: 'musicbox', type: 'musicBox', x: 25, y: 1.15, z: 5.2, ry: 0, room: 'prize', label: 'Music box' },
   { id: 'front-doors', type: 'frontDoors', x: 40, y: 1.2, z: 0.25, ry: 0, room: 'lobby', label: 'Front doors' },
+  { id: 'phone', type: 'phone', x: 23.8, y: 0.9, z: 49.2, ry: 0, room: 'office', label: 'Phone' },
+  { id: 'office-chair', type: 'officeChair', x: 25, y: 0.7, z: 50.8, ry: 0, room: 'office', label: 'Office chair' },
+  { id: 'booth-desk', type: 'boothDesk', x: 61, y: 1.0, z: 23.0, ry: 180, room: 'booth', label: 'Mixing desk' },
   { id: 'honk', type: 'honk', x: 24.5, y: 1.9, z: 48.15, ry: 0, room: 'office', label: 'Honk' },
 ];
 
@@ -426,4 +429,33 @@ export const ITEM_SPAWNS: ItemSpawnDef[] = [
   { x: 58, y: 2.05, z: 59.4, room: 'bServer', types: ['fuse'] },
   { x: 12, y: 1.65 + BASEMENT_Y, z: 58, room: 'bOld', types: ['battery'] },
   { x: 72, y: 0.05, z: 30, room: 'parts', types: ['fuse'] },
+];
+
+// The Faz-Pad charges on the security desk.
+ITEM_SPAWNS.push({ x: 26.3, y: 0.83, z: 49.2, room: 'office', types: ['fazpad'], guaranteed: 'fazpad' });
+
+// ---- Security cameras (Part 3.33) ----------------------------------------------------------------------
+
+const look = (x: number, z: number, tx: number, tz: number) => Math.atan2(-(tx - x), -(tz - z));
+export const CAMERAS: SecurityCameraDef[] = [
+  { id: '1A', name: 'Show Stage', x: 47, y: 4.2, z: 15.5, yaw: -Math.PI / 2, pitch: -0.18, room: 'dining' },
+  { id: '1B', name: 'Dining Hall', x: 34, y: 4.6, z: 10.4, yaw: Math.PI, pitch: -0.35, room: 'dining' },
+  { id: '1C', name: 'Pirate Cove', x: 17.5, y: 3.4, z: 11.5, yaw: look(17.5, 11.5, 8, 16), pitch: -0.25, room: 'dining' },
+  { id: '2A', name: 'West Hall', x: 12, y: 3.2, z: 22.6, yaw: Math.PI, pitch: -0.22, room: 'westHall' },
+  { id: '2B', name: 'West Corner', x: 21.6, y: 3.2, z: 48.4, yaw: look(21.6, 48.4, 16, 51.5), pitch: -0.3, room: 'westCorner' },
+  { id: '3', name: 'Parts & Service', x: 81.5, y: 2.5, z: 24.5, yaw: look(81.5, 24.5, 70, 34), pitch: -0.2, room: 'parts' },
+  { id: '4A', name: 'East Hall', x: 34, y: 3.2, z: 32.6, yaw: Math.PI, pitch: -0.22, room: 'eastHall' },
+  { id: '4B', name: 'East Corner', x: 31.6, y: 3.2, z: 48.4, yaw: look(31.6, 48.4, 28, 51), pitch: -0.3, room: 'eastCorner' },
+  { id: '5', name: 'Backstage', x: 67.5, y: 3.0, z: 35.5, yaw: look(67.5, 35.5, 56, 29), pitch: -0.25, room: 'backstage' },
+  { id: '6', name: 'Kitchen', x: 44, y: 3.2, z: 44.4, yaw: Math.PI, pitch: -0.3, room: 'kitchen', audioOnly: true },
+  { id: '7', name: 'Restrooms', x: 39.6, y: 2.8, z: 32.4, yaw: look(39.6, 32.4, 37, 36), pitch: -0.3, room: 'restCorr' },
+  { id: '8', name: 'Prize Corner', x: 28.5, y: 3.2, z: 9.5, yaw: look(28.5, 9.5, 22, 5), pitch: -0.3, room: 'prize' },
+  { id: '9', name: 'Arcade', x: 63.5, y: 3.2, z: 9.5, yaw: look(63.5, 9.5, 54, 3), pitch: -0.25, room: 'arcade' },
+  { id: '10', name: 'Lobby', x: 49.5, y: 3.2, z: 9.5, yaw: look(49.5, 9.5, 38, 2), pitch: -0.25, room: 'lobby' },
+  { id: '11', name: 'Play Zone', x: 31.5, y: 4.2, z: 47.5, yaw: look(31.5, 47.5, 22, 38), pitch: -0.3, room: 'play' },
+  { id: '12', name: 'Party Rooms Hall', x: 12, y: 3.2, z: 49.4, yaw: 0, pitch: -0.22, room: 'westHall' },
+  { id: '13', name: 'Utility Corridor', x: 65.5, y: 2.7, z: 57.5, yaw: Math.PI / 2, pitch: -0.15, room: 'utility' },
+  { id: '14', name: 'Loading Dock', x: 81.5, y: 4.0, z: 61.5, yaw: look(81.5, 61.5, 70, 52), pitch: -0.25, room: 'dock' },
+  { id: '15', name: 'Basement Hall', x: 61.5, y: BASEMENT_Y + 2.5, z: 65.5, yaw: Math.PI / 2, pitch: -0.15, room: 'bHall' },
+  { id: '16', name: 'Breaker Room', x: 29.5, y: BASEMENT_Y + 2.9, z: 56.5, yaw: look(29.5, 56.5, 22.5, 60), pitch: -0.35, room: 'bBreaker' },
 ];

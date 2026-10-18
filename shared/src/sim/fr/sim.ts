@@ -8,6 +8,7 @@ import { NavGrid } from './nav';
 import { Agent, makeAgent, sawHiding, tickAgent } from './ai';
 import { NightState } from './night';
 import { spawnPowerOut } from './cast';
+import { OfficeState, camera, cameraSees, type OfficeButton } from './office';
 
 // The free-roam simulation. Deterministic given a seed and the input log; runs headless in Node (server,
 // tests, balance script) and in the browser (solo play). It owns players, doors, power, noise, the clock
@@ -23,7 +24,11 @@ export type FrAct =
   | { type: 'revive'; pid: string }
   | { type: 'pickup'; id: number }
   | { type: 'battery' }
-  | { type: 'drop' };
+  | { type: 'drop' }
+  | { type: 'stand' }
+  | { type: 'office'; what: OfficeButton }
+  | { type: 'cam'; id: string }
+  | { type: 'tablet'; up: boolean };
 
 export interface FrCmd extends FrInput {
   flash: boolean;
@@ -71,6 +76,12 @@ export interface FrPlayer {
   useTarget: string | null;
   /** Left through the front doors early. */
   exited: boolean;
+  /** Sitting at the Security Office desk. */
+  seated: boolean;
+  /** Camera this player is watching (office monitor or Faz-Pad), or null. */
+  viewCam: string | null;
+  tabletUp: boolean;
+  padBattery: number;
   /** Golden Freddy, for this player only: 0 none, 1 armed by the poster, 2 sitting in front of them. */
   golden: { phase: 0 | 1 | 2; yaw0: number; x: number; y: number; z: number; t: number; stare: number; seenPoster: boolean; count: number };
 }
@@ -126,7 +137,13 @@ export type FrEvent =
   | { t: 'puppetBack' }
   | { t: 'toreador'; x: number; y: number; z: number }
   | { t: 'songEnd' }
-  | { t: 'golden'; pid: string; phase: 'poster' | 'appear' | 'gone' | 'scream'; x?: number; z?: number };
+  | { t: 'golden'; pid: string; phase: 'poster' | 'appear' | 'gone' | 'scream'; x?: number; z?: number }
+  | { t: 'phone'; state: 'ringing' | 'missed' }
+  | { t: 'call'; night: number; by: string }
+  | { t: 'seat'; pid: string; on: boolean }
+  | { t: 'office'; what: string; lights: { L: boolean; R: boolean }; monitor: boolean }
+  | { t: 'lure'; x: number; y: number; z: number }
+  | { t: 'tablet'; pid: string; up: boolean };
 
 export interface FrSimOptions {
   seed: number;
@@ -158,6 +175,7 @@ export class FrSim {
   readonly doorTarget: Float32Array;
   readonly power = { main: false, circuits: new Set<CircuitId>(['always']) };
   readonly night: NightState;
+  readonly office: OfficeState;
   /** Events produced during the last tick. */
   events: FrEvent[] = [];
   /** Noise heard this tick (also included in events). */
@@ -188,6 +206,7 @@ export class FrSim {
       for (const r of this.level.rooms) this.power.circuits.add(r.circuit);
     }
     this.night = new NightState(this, opts.mode === 'night');
+    this.office = new OfficeState(this);
   }
 
   // ---- Setup -------------------------------------------------------------------------------------
@@ -219,6 +238,10 @@ export class FrSim {
       useTarget: null,
       exited: false,
       golden: { phase: 0, yaw0: 0, x: 0, y: 0, z: 0, t: 0, stare: 0, seenPoster: false, count: 0 },
+      seated: false,
+      viewCam: null,
+      tabletUp: false,
+      padBattery: 100,
     };
     this.players.set(id, p);
     return p;
@@ -259,6 +282,7 @@ export class FrSim {
   circuitOn(c: CircuitId): boolean {
     if (c === 'always') return true;
     if (c === 'breaker') return this.power.main;
+    if (c === 'office') return this.power.main && this.night.groupLive('office');
     return this.power.main && this.power.circuits.has(c) && this.night.groupLive(c);
   }
 
@@ -268,6 +292,7 @@ export class FrSim {
 
   /** Is the zone at this point lit? */
   litAt(x: number, y: number, z: number): boolean {
+    if (this.office.lightsCorner(x, z)) return true;
     const r = this.roomAt(x, y + 0.3, z);
     if (!r) return false;
     return this.circuitOn(this.level.roomById[r].circuit);
@@ -280,6 +305,11 @@ export class FrSim {
   /** Can this living player currently see the point (frustum, range, occlusion, light)? */
   playerSees(p: FrPlayer, x: number, y: number, z: number, glowing = false): boolean {
     if (!this.alive(p) || p.hidden) return false;
+    // Watching a camera counts as looking (and you can't see the room you're in while you do).
+    if (p.viewCam) {
+      const cam = camera(p.viewCam);
+      return cam ? cameraSees(this, cam, x, y, z) : false;
+    }
     const b = p.body;
     const ex = b.x;
     const ey = b.y + eyeHeight(b);
@@ -344,6 +374,7 @@ export class FrSim {
 
     this.tickDoors(dt);
     this.night.tick(dt);
+    this.office.tick(dt);
     for (const p of this.players.values()) this.tickPlayer(p, dt);
     this.tickPowerOut();
     for (const a of this.agents) tickAgent(this, a, dt);
@@ -406,7 +437,19 @@ export class FrSim {
       this.tickHidden(p, c, dt);
       return;
     }
-    const ev = stepBody(p.body, c, dt, this.world);
+    if (p.tabletUp) {
+      p.padBattery = Math.max(0, p.padBattery - 2 * dt);
+      if (p.padBattery <= 0 || !this.night.has(p, 'fazpad')) this.setTablet(p, false);
+    }
+    if (p.seated) {
+      p.body.yaw = c.yaw;
+      p.body.pitch = c.pitch;
+      p.body.speed = 0;
+      if (c.use) this.night.hold(p, c.use, dt);
+      return;
+    }
+    // Hands on a tablet: no running, no jumping.
+    const ev = stepBody(p.body, p.tabletUp ? { ...c, sprint: false, jump: false } : c, dt, this.world);
     for (const e of ev) {
       this.noise(p.body.x, p.body.y, p.body.z, e.radius, p.id);
       if (e.type === 'step') this.emit({ t: 'step', pid: p.id, r: e.radius });
@@ -510,6 +553,23 @@ export class FrSim {
       this.night.pickup(p, act.id);
       return;
     }
+    if (act.type === 'stand') {
+      if (p.seated) this.office.stand(p);
+      return;
+    }
+    if (act.type === 'office') {
+      this.office.press(p, act.what);
+      return;
+    }
+    if (act.type === 'tablet') {
+      this.setTablet(p, act.up);
+      return;
+    }
+    if (act.type === 'cam') {
+      if ((p.tabletUp || (p.seated && this.office.monitorUp)) && camera(act.id)) p.viewCam = act.id;
+      return;
+    }
+    if (p.seated) return;
     if (act.type === 'battery') {
       this.night.useBattery(p);
       return;
@@ -551,6 +611,9 @@ export class FrSim {
     if (act.type === 'item') {
       const it = this.level.interactables.find((i) => i.id === act.id);
       if (!it || Math.hypot(it.x - b.x, it.z - b.z) > reach || Math.abs(it.y - (b.y + 1.2)) > 2) return;
+      if (it.type === 'officeChair') return this.office.sit(p);
+      if (it.type === 'phone') return this.office.answer(p);
+      if (it.type === 'boothDesk') return this.office.lure(p);
       if (this.night.press(p, it.id)) return;
       if (it.type === 'zoneSwitch' && it.circuit) {
         const err = this.night.zoneSwitch(it.circuit);
@@ -678,6 +741,14 @@ export class FrSim {
     p.reviveProgress = 0;
     this.emit({ t: 'downed', pid: p.id });
     if (solo) p.revives++;
+  }
+
+  setTablet(p: FrPlayer, up: boolean): void {
+    if (up && (!this.night.has(p, 'fazpad') || p.padBattery <= 0 || p.seated)) return;
+    if (p.tabletUp === up) return;
+    p.tabletUp = up;
+    p.viewCam = up ? (p.viewCam ?? '1C') : null;
+    this.emit({ t: 'tablet', pid: p.id, up });
   }
 
   /** Walked out through the unlocked front doors: safe, and paid a bonus. */

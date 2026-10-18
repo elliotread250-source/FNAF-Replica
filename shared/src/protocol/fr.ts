@@ -17,6 +17,10 @@ export const FrActZ = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pickup'), id: z.number().int().min(0).max(1000) }),
   z.object({ type: z.literal('battery') }),
   z.object({ type: z.literal('drop') }),
+  z.object({ type: z.literal('stand') }),
+  z.object({ type: z.literal('office'), what: z.enum(['doorL', 'doorR', 'lightL', 'lightR', 'monitor']) }),
+  z.object({ type: z.literal('cam'), id: z.string().max(4) }),
+  z.object({ type: z.literal('tablet'), up: z.boolean() }),
 ]);
 
 export const FrCmdZ = z.object({
@@ -111,6 +115,18 @@ export interface FrSnapMe {
   reviveProgress: number;
   useProgress: number;
   exited: boolean;
+  seated: boolean;
+  viewCam: string | null;
+  tabletUp: boolean;
+  padBattery: number;
+}
+
+export interface FrSnapOffice {
+  seated: string | null;
+  lights: { L: boolean; R: boolean };
+  monitorUp: boolean;
+  phone: string;
+  lureCooldown: number;
 }
 
 export interface FrSnap {
@@ -127,6 +143,7 @@ export interface FrSnap {
   targets: number[];
   power: { main: boolean; circuits: string[] };
   night: FrSnapNight;
+  office: FrSnapOffice;
   ev: FrEvent[];
   over: { won: boolean } | null;
 }

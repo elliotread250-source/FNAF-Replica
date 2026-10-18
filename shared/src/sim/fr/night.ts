@@ -130,7 +130,7 @@ export class NightState {
     const sim = this.sim;
     let r = FR.power.ALWAYS;
     if (!sim.power.main) return r;
-    r += FR.power.BASE;
+    r += FR.power.BASE + sim.office.drainPerHour();
     for (const c of sim.power.circuits) if (c !== 'always' && sim.circuitOn(c)) r += FR.power.PER_CIRCUIT;
     sim.level.doors.forEach((d, i) => {
       if (d.kind !== 'shutter' || sim.doorTarget[i] > 0.5) return;
@@ -261,6 +261,13 @@ export class NightState {
   /** Held interactions: winding the music box, replacing a fuse. Returns progress 0..1, or -1 if invalid. */
   hold(p: FrPlayer, use: string, dt: number): number {
     const sim = this.sim;
+    if (use === 'musicbox:remote') {
+      // From CAM 8, on the office monitor or the Faz-Pad, at 40% speed.
+      if (p.viewCam !== '8') return -1;
+      this.musicBox = Math.min(100, this.musicBox + FR.musicBox.WIND_REMOTE * dt);
+      if (this.musicBox > 50) this.warned.clear();
+      return this.musicBox / 100;
+    }
     if (use === 'musicbox') {
       const mb = sim.level.interactables.find((i) => i.id === 'musicbox');
       if (!mb || Math.hypot(mb.x - p.body.x, mb.z - p.body.z) > 1.9) return -1;

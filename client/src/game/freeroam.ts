@@ -5,6 +5,7 @@ import {
   IDLE_CMD,
   BREAKER_GROUPS,
   FUSE_BOXES,
+  FR_CALLS,
   eyeHeight,
   makeAgent,
   stepBody,
@@ -146,6 +147,9 @@ export class FreeRoam {
     inv: HTMLElement;
     clip: HTMLElement;
     ring: HTMLElement;
+    office: HTMLElement;
+    cams: HTMLElement;
+    sub: HTMLElement;
   };
   private target: Target = null;
   private mapOpen = false;
@@ -178,6 +182,14 @@ export class FreeRoam {
   private nightVis: NightVisuals;
   private stopSong: () => void = () => {};
   private golden: CharacterRig | null = null;
+  private feedTarget: THREE.WebGLRenderTarget | null = null;
+  private feedCam = new THREE.PerspectiveCamera(70, 4 / 3, 0.1, 60);
+  private lastCam: string | null = null;
+  private camSwitchT = 0;
+  private cornerLights: THREE.SpotLight[] = [];
+  private subtitleQueue: string[] = [];
+  private subtitleT = 0;
+  private ringT = 0;
   private clipboardOpen = false;
   /** Test and debug access, only wired when explicitly asked for. */
   readonly debug = {
@@ -254,6 +266,16 @@ export class FreeRoam {
     this.scene.background = new THREE.Color('#020204');
     this.scene.fog = new THREE.FogExp2('#050608', 0.03);
     this.buildFlashlight(r.shadowSize);
+    for (const [x, tx] of [
+      [22.4, 19],
+      [27.6, 31],
+    ] as const) {
+      const l = new THREE.SpotLight('#fff0d0', 0, 9, 0.75, 0.5, 1);
+      l.position.set(x, 2.3, 51);
+      l.target.position.set(tx, 0, 50);
+      this.scene.add(l, l.target);
+      this.cornerLights.push(l);
+    }
     this.buildUi(ui);
     this.bind();
     this.buildStatues();
@@ -330,6 +352,9 @@ export class FreeRoam {
     const inv = h('div', { class: 'fr-inv' });
     const clip = h('div', { class: 'fr-clip' });
     const ring = h('div', { class: 'fr-ring' });
+    const office = h('div', { class: 'fr-office' });
+    const cams = h('div', { class: 'fr-cams' });
+    const sub = h('div', { class: 'fr-sub' });
     const pause = h(
       'div',
       { class: 'fr-pause' },
@@ -337,13 +362,13 @@ export class FreeRoam {
       h(
         'p',
         null,
-        'Click to look around. WASD move, Shift run, C crouch, X crawl, Space jump or vault (hold Space while hidden to hold your breath), E interact or hide (hold E to wind, fix or revive), F flashlight, B battery, G drop, Tab clipboard, Q and R lean, M map. Esc releases the mouse.',
+        'Click to look around. WASD move, Shift run, C crouch, X crawl, Space jump or vault (hold Space while hidden to hold your breath), E interact or hide (hold E to wind, fix or revive), F flashlight, T Faz-Pad, B battery, G drop, Tab clipboard, Q and R lean, M map. Esc releases the mouse.',
       ),
       h('button', { class: 'btn', onclick: (e: Event) => (e.stopPropagation(), this.onExit()) }, 'Leave the building'),
     );
-    const wrap = h('div', { class: 'fr-hud pass' }, hideView, h('div', { class: 'fr-cross' }), ring, prompt, room, stamina, breath, hint, clock, inv, clip, map, downed, card, debug, pause);
+    const wrap = h('div', { class: 'fr-hud pass' }, hideView, h('div', { class: 'fr-cross' }), ring, prompt, room, stamina, breath, hint, clock, inv, office, cams, sub, clip, map, downed, card, debug, pause);
     root.appendChild(wrap);
-    this.ui = { prompt, room, stamina, hint, clock, map, root: wrap, pause, hideView, breath, downed, card, debug, inv, clip, ring };
+    this.ui = { prompt, room, stamina, hint, clock, map, root: wrap, pause, hideView, breath, downed, card, debug, inv, clip, ring, office, cams, sub };
   }
 
   private bind(): void {
@@ -375,6 +400,13 @@ export class FreeRoam {
         audio.play('click', { gain: 0.5 });
       }
       if (e.code === 'KeyM') this.toggleMap();
+      if (e.code === 'KeyT' && !this.me.seated) this.actQueued = { type: 'tablet', up: !this.me.tabletUp };
+      if (this.me.seated) {
+        const office: Record<string, 'doorL' | 'lightL' | 'lightR' | 'doorR'> = { Digit1: 'doorL', Digit2: 'lightL', Digit3: 'lightR', Digit4: 'doorR' };
+        if (office[e.code]) this.actQueued = { type: 'office', what: office[e.code] };
+        if (e.code === 'Space') this.actQueued = { type: 'office', what: 'monitor' };
+      }
+      if (this.me.viewCam && (e.code === 'BracketRight' || e.code === 'BracketLeft' || e.code === 'ArrowRight' || e.code === 'ArrowLeft')) this.cycleCam(e.code === 'BracketRight' || e.code === 'ArrowRight' ? 1 : -1);
       if (e.code === 'KeyB') this.actQueued = { type: 'battery' };
       if (e.code === 'KeyG') this.actQueued = { type: 'drop' };
       if (e.code === 'Tab') {
@@ -396,6 +428,11 @@ export class FreeRoam {
       if (e.code === 'Tab') this.clipboardOpen = false;
     };
     const onBlur = () => this.keys.clear();
+    const onWheel = (e: WheelEvent) => {
+      if (this.me.viewCam) this.cycleCam(e.deltaY > 0 ? 1 : -1);
+    };
+    window.addEventListener('wheel', onWheel);
+    this.cleanup.push(() => window.removeEventListener('wheel', onWheel));
     canvas.addEventListener('click', onClick);
     this.ui.pause.addEventListener('click', onClick);
     document.addEventListener('pointerlockchange', onLock);
@@ -459,6 +496,11 @@ export class FreeRoam {
     this.nightVis.update(dt);
     this.updateHud(dt);
     this.shake = Math.max(0, this.shake - dt * 2);
+    this.updateOfficeHud(dt);
+    if (this.me.viewCam) {
+      this.renderFeed(dt);
+      return;
+    }
     u.darkness.value = this.me.ghost ? 0.25 : 0;
     u.flash.value = 0;
     u.redTint.value = this.me.downed ? 0.55 : this.chaseLoop ? 0.08 : 0;
@@ -570,6 +612,16 @@ export class FreeRoam {
     me.reviveProgress = m.reviveProgress;
     me.useProgress = m.useProgress;
     me.exited = m.exited;
+    me.seated = m.seated;
+    me.viewCam = m.viewCam;
+    me.tabletUp = m.tabletUp;
+    me.padBattery = m.padBattery;
+    const o = sim.office;
+    o.seated = s.office.seated;
+    o.lights = s.office.lights;
+    o.monitorUp = s.office.monitorUp;
+    o.phone = s.office.phone as typeof o.phone;
+    o.lureCooldown = s.office.lureCooldown;
     const before = { x: me.body.x, y: me.body.y, z: me.body.z };
     Object.assign(me.body, m.body);
     this.history = this.history.filter((h) => h.seq > s.ack);
@@ -613,7 +665,7 @@ export class FreeRoam {
     }
     sim.agents.length = 0;
     sim.agents.push(...keep);
-    for (const [id, v] of this.agents) v.rig.root.visible = keep.some((a) => a.id === id);
+
     for (const e of s.ev) {
       if (e.t === 'step') {
         const fp = sim.players.get(e.pid);
@@ -676,7 +728,7 @@ export class FreeRoam {
   private buildCmd(): FrCmd {
     const k = this.keys;
     const active = this.locked || Boolean(window.__frAuto);
-    const hidden = Boolean(this.me.hidden);
+    const hidden = Boolean(this.me.hidden) || this.me.seated;
     const cmd: FrCmd = {
       ...IDLE_CMD,
       fwd: active && !hidden ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0,
@@ -689,7 +741,12 @@ export class FreeRoam {
       flash: this.flashOn,
       breath: hidden && k.has('Space'),
       hold: k.has('KeyE') && this.target?.kind === 'revive',
-      use: k.has('KeyE') && this.target?.kind === 'item' && (this.target.item.type === 'musicBox' || this.target.item.type === 'fuseBox') ? this.target.item.id : undefined,
+      use:
+        this.me.viewCam === '8' && k.has('KeyW')
+          ? 'musicbox:remote'
+          : k.has('KeyE') && this.target?.kind === 'item' && (this.target.item.type === 'musicBox' || this.target.item.type === 'fuseBox')
+            ? this.target.item.id
+            : undefined,
       act: this.actQueued ?? undefined,
     };
     this.jumpQueued = false;
@@ -876,6 +933,31 @@ export class FreeRoam {
       case 'golden':
         this.onGolden(e);
         break;
+      case 'phone':
+        if (e.state === 'ringing') this.ringT = 30;
+        else this.ringT = 0;
+        break;
+      case 'call': {
+        this.ringT = 0;
+        const lines = FR_CALLS[e.night] ?? [];
+        this.subtitleQueue = lines.map((l) => store.roster.fill(l));
+        this.subtitleT = 0;
+        audio.play('click', { gain: 0.6 });
+        break;
+      }
+      case 'office':
+        audio.play(e.what === 'monitor' ? 'cam' : e.what.startsWith('door') ? 'door_slam' : 'click', { gain: 0.6 });
+        break;
+      case 'lure':
+        audio.play('coin', { gain: 0.5 * Math.max(0.2, this.gainAt(e.x, e.y, e.z)) });
+        this.say('SHOWTIME! The jingle blares from the stage speakers.');
+        break;
+      case 'tablet':
+        if (mine) audio.play('cam', { gain: 0.5 });
+        break;
+      case 'seat':
+        if (mine) this.say(e.on ? 'On duty. 1/4 doors, 2/3 lights, Space monitor, E to stand.' : '');
+        break;
       default:
         break;
     }
@@ -911,6 +993,140 @@ export class FreeRoam {
   private removeGolden(): void {
     if (this.golden) this.scene.remove(this.golden.root);
     this.golden = null;
+  }
+
+  /** Rigs outside the visible rooms are hidden too (and the Puppet stays in its box until it's out). */
+  private syncRigVisibility(): void {
+    for (const [id, v] of this.agents) {
+      const ag = this.sim.agents.find((a) => a.id === id);
+      if (!ag) {
+        v.rig.root.visible = false;
+        continue;
+      }
+      const r = this.render.roomAt(v.cur.x, v.cur.y + 0.5, v.cur.z);
+      let vis = !r || (this.render.roomGroups.get(r)?.visible ?? true);
+      if (id === 'puppet' && ag.state === 'DORMANT') vis = false;
+      if (id === 'foxy' && ag.state === 'COVE' && (ag.x2.stage ?? 0) < 1 && this.lastRoom !== 'cove') vis = false;
+      v.rig.root.visible = vis;
+    }
+  }
+
+  private cycleCam(dir: number): void {
+    const ids = this.sim.level.cameras.map((c) => c.id);
+    const i = Math.max(0, ids.indexOf(this.me.viewCam ?? '1B'));
+    const next = ids[(i + dir + ids.length) % ids.length];
+    this.actQueued = { type: 'cam', id: next };
+    // Predict the switch so the feed responds instantly.
+    this.me.viewCam = next;
+  }
+
+  /** Draw the selected security camera through the CRT shader instead of the first-person view. */
+  private renderFeed(dt: number): void {
+    const r = getRenderer();
+    const cam = this.sim.level.cameras.find((c) => c.id === this.me.viewCam);
+    if (!cam) return;
+    if (!this.feedTarget) {
+      const [w, hgt] = r.cameraTargetSize;
+      this.feedTarget = new THREE.WebGLRenderTarget(w, hgt);
+    }
+    if (cam.id !== this.lastCam) {
+      this.lastCam = cam.id;
+      this.camSwitchT = 0.18;
+      audio.play('cam', { gain: 0.35 });
+    }
+    this.camSwitchT = Math.max(0, this.camSwitchT - dt);
+    const fc = this.feedCam;
+    fc.position.set(cam.x, cam.y, cam.z);
+    fc.rotation.order = 'YXZ';
+    fc.rotation.set(cam.pitch, cam.yaw + Math.sin(this.time * 0.25) * 0.12, 0);
+    fc.updateMatrixWorld(true);
+    this.render.cull(cam.room, 1);
+    this.syncRigVisibility();
+    this.flash.visible = false;
+    this.beam.visible = false;
+    const savedFog = (this.scene.fog as THREE.FogExp2).density;
+    (this.scene.fog as THREE.FogExp2).density = 0.015;
+    // Every camera carries a weak infrared lamp so silhouettes read in the dark.
+    const ir = this.cornerLights[0];
+    const was = { pos: ir.position.clone(), tgt: ir.target.position.clone(), i: ir.intensity, d: ir.distance, a: ir.angle, c: ir.color.clone() };
+    ir.position.copy(fc.position);
+    ir.target.position.copy(fc.position).add(new THREE.Vector3(0, 0, -1).applyEuler(fc.rotation).multiplyScalar(10));
+    ir.target.updateMatrixWorld();
+    ir.intensity = 30;
+    ir.distance = 28;
+    ir.angle = 0.9;
+    ir.color.set('#c8d8ff');
+    r.renderTo(this.scene, fc, this.feedTarget);
+    Object.assign(ir, { intensity: was.i, distance: was.d, angle: was.a });
+    ir.position.copy(was.pos);
+    ir.target.position.copy(was.tgt);
+    ir.color.copy(was.c);
+    (this.scene.fog as THREE.FogExp2).density = savedFog;
+    this.render.cull(this.lastRoom, 2);
+    this.syncRigVisibility();
+    const audioOnly = Boolean(cam.audioOnly);
+    r.renderCrt(this.feedTarget.texture, {
+      staticAmt: audioOnly ? 0.95 : Math.min(1, this.camSwitchT * 5 + 0.05),
+      tint: new THREE.Vector3(0.75, 1.05, 0.8),
+      mono: 0,
+      glitch: this.sim.agents.some((a) => a.speed > 0.5 && cameraSeesClient(this.sim, cam, a.x, a.y + 1, a.z)) ? 0.4 : 0,
+    });
+  }
+
+  private officeKey = '';
+  private updateOfficeHud(dt: number): void {
+    // The phone keeps ringing until someone answers.
+    if (this.ringT > 0) {
+      this.ringT -= dt;
+      if (Math.floor(this.ringT * 0.5) !== Math.floor((this.ringT + dt) * 0.5)) audio.play('phone', { gain: 0.5 * Math.max(0.15, this.gainAt(24, 1, 49)) });
+    }
+    // Subtitles for the call.
+    if (this.subtitleQueue.length) {
+      this.subtitleT -= dt;
+      if (this.subtitleT <= 0) {
+        const line = this.subtitleQueue.shift() as string;
+        this.ui.sub.textContent = line;
+        this.subtitleT = Math.max(3, line.length / 16);
+        if (!line.startsWith('[')) audio.babble(Math.min(this.subtitleT - 0.3, 8), 0.35);
+      }
+    } else if (this.subtitleT > -1) {
+      this.subtitleT -= dt;
+      if (this.subtitleT <= 0) this.ui.sub.textContent = '';
+    }
+    const o = this.sim.office;
+    const seated = this.me.seated;
+    const view = this.me.viewCam;
+    const key = `${seated}|${view}|${o.lights.L}|${o.lights.R}|${o.monitorUp}|${this.sim.doorTarget[o.doorL]}|${this.sim.doorTarget[o.doorR]}|${Math.round(this.me.padBattery)}|${this.me.tabletUp}|${Math.round(this.sim.night.musicBox)}`;
+    if (key === this.officeKey) return;
+    this.officeKey = key;
+    const el = this.ui.office;
+    el.textContent = '';
+    el.style.display = seated ? 'flex' : 'none';
+    if (seated) {
+      const btn = (label: string, on: boolean) => h('div', { class: `fr-obtn ${on ? 'on' : ''}` }, label);
+      el.append(
+        btn(`[1] Door ${this.sim.doorTarget[o.doorL] < 0.5 ? 'CLOSED' : 'open'}`, this.sim.doorTarget[o.doorL] < 0.5),
+        btn(`[2] Light`, o.lights.L),
+        btn('[Space] Monitor', o.monitorUp),
+        btn(`[3] Light`, o.lights.R),
+        btn(`[4] Door ${this.sim.doorTarget[o.doorR] < 0.5 ? 'CLOSED' : 'open'}`, this.sim.doorTarget[o.doorR] < 0.5),
+      );
+    }
+    const cams = this.ui.cams;
+    cams.textContent = '';
+    cams.style.display = view ? 'block' : 'none';
+    if (view) {
+      const cam = this.sim.level.cameras.find((c) => c.id === view);
+      cams.append(
+        h('div', { class: 'fr-cam-title' }, `CAM ${view}  ${cam?.name ?? ''}${cam?.audioOnly ? '  (CAMERA DISABLED: AUDIO ONLY)' : ''}`),
+        h(
+          'div',
+          { class: 'fr-cam-list' },
+          this.sim.level.cameras.map((c) => h('span', { class: c.id === view ? 'on' : '' }, c.id)),
+        ),
+        h('div', { class: 'fr-cam-help' }, `Wheel or [ ] to switch${view === '8' ? `  \u2022  Hold W to wind the music box (${Math.round(this.sim.night.musicBox)}%)` : ''}${this.me.tabletUp ? `  \u2022  Faz-Pad ${Math.round(this.me.padBattery)}%  \u2022  T to lower` : '  \u2022  Space to lower'}`),
+      );
+    }
   }
 
   private gainAt(x: number, y: number, z: number): number {
@@ -951,12 +1167,10 @@ export class FreeRoam {
         // Cove stages: hidden behind the curtain, peeking through it, stepping out in front.
         const stage = ag.x2.stage ?? 0;
         rig.root.position.x = [x, x + 5.2, x + 6.4, x + 6.4][Math.min(3, stage)];
-        rig.root.visible = stage >= 1 || this.lastRoom === 'cove';
       }
       if (ag.id === 'puppet') {
         // Inside the gift box until the music stops; afterwards it floats.
         const out = ag.state !== 'DORMANT';
-        rig.root.visible = out;
         rig.root.position.y = y + (out ? 0.15 + Math.sin(this.time * 2.1) * 0.05 : 0);
         rig.root.rotation.z = Math.sin(this.time * 1.3) * 0.06;
       }
@@ -1070,11 +1284,11 @@ export class FreeRoam {
       this.render.cull(room, 2);
     }
     this.render.update(dt, this.power, cam, room);
-    // Rigs outside the visible rooms are hidden too.
-    for (const v of this.agents.values()) {
-      const r = this.render.roomAt(v.cur.x, v.cur.y + 0.5, v.cur.z);
-      v.rig.root.visible = !r || (this.render.roomGroups.get(r)?.visible ?? true);
-    }
+    const ol = this.sim.office;
+    const opow = this.sim.circuitOn('office');
+    this.cornerLights[0].intensity = opow && ol.lights.L ? 40 : 0;
+    this.cornerLights[1].intensity = opow && ol.lights.R ? 40 : 0;
+    this.syncRigVisibility();
     const sc = this.scene.fog as THREE.FogExp2;
     const lit = this.render.ambient.intensity > 0.2;
     if (audio.ready) {
@@ -1184,6 +1398,9 @@ export class FreeRoam {
       if (n.items.some((q) => q.plate === i.index)) return 'A cupcake, candle lit';
       return n.has(this.me, 'cupcake') ? '[E] Place a cupcake' : 'Birthday plate: bring a cupcake';
     }
+    if (i.type === 'officeChair') return this.sim.office.seated ? 'Someone is on duty' : '[E] Sit at the desk (cameras, doors, lights)';
+    if (i.type === 'phone') return this.sim.office.phone === 'ringing' ? '[E] Answer the phone' : this.sim.office.phone === 'missed' ? '[E] Play the answering machine' : 'The phone';
+    if (i.type === 'boothDesk') return this.sim.office.lureCooldown > 0 ? `Showtime jingle rewinding (${Math.ceil(this.sim.office.lureCooldown)}s)` : '[E] Play the Showtime jingle (draws them to the stage)';
     if (i.type === 'frontDoors') return n.frontUnlocked ? '[E] Leave through the front doors' : 'Chained shut until 5 AM';
     if (i.type === 'zoneSwitch') return `[E] ${CIRCUIT_NAMES[i.circuit ?? ''] ?? i.label} lights ${this.sim.power.circuits.has(i.circuit as CircuitId) ? 'OFF' : 'ON'}`;
     if (i.type === 'honk') return '[E] Honk';
@@ -1196,6 +1413,10 @@ export class FreeRoam {
   }
 
   interact(): void {
+    if (this.me.seated) {
+      this.actQueued = { type: 'stand' };
+      return;
+    }
     if (this.me.hidden) {
       this.actQueued = { type: 'unhide', exit: 0 };
       return;
@@ -1369,6 +1590,15 @@ export class FreeRoam {
     ctx.fillStyle = '#3a2a1a';
     ctx.fillText(below ? 'BASEMENT' : 'GROUND FLOOR', 8, 14);
   }
+}
+
+function cameraSeesClient(sim: FrSim, cam: { x: number; y: number; z: number; yaw: number }, x: number, y: number, z: number): boolean {
+  const dx = x - cam.x;
+  const dz = z - cam.z;
+  const flat = Math.hypot(dx, dz);
+  if (flat > 30) return false;
+  if ((dx * -Math.sin(cam.yaw) + dz * -Math.cos(cam.yaw)) / (flat || 1) < Math.cos((40 * Math.PI) / 180)) return false;
+  return sim.world.clearLine(cam.x, cam.y, cam.z, x, y, z);
 }
 
 function nameSprite(text: string): THREE.Sprite {
