@@ -18,6 +18,8 @@ export interface OfficeKitState {
 
 export interface OfficeKitRender {
   root: THREE.Group;
+  /** The desk phone (the seated office makes it clickable). */
+  phone: THREE.Object3D | null;
   /** World position of the fan head, for its audio. */
   fanPos: THREE.Vector3;
   /** Current fan speed 0..1 (spins down over ~3 s when power drops). */
@@ -206,7 +208,8 @@ function taper(w: number, h: number, depth: number, k: number): THREE.BufferGeom
   return g;
 }
 
-export function buildOfficeKit(): OfficeKitRender {
+/** `kinds` limits the build (the seated office takes only the desk set; its room is its own). */
+export function buildOfficeKit(kinds?: OfficePart['kind'][]): OfficeKitRender {
   const root = new THREE.Group();
   root.name = 'officeKit';
   const metal = metalTex(19, 'scratched', '#6a6e74');
@@ -224,7 +227,9 @@ export function buildOfficeKit(): OfficeKitRender {
   const fanPos = new THREE.Vector3();
   let lampShade: THREE.Object3D | null = null;
 
+  let phone: THREE.Object3D | null = null;
   for (const part of OFFICE_KIT) {
+    if (kinds && !kinds.includes(part.kind)) continue;
     const g = new THREE.Group();
     g.name = part.id;
     g.position.set(part.x, part.y, part.z);
@@ -249,6 +254,21 @@ export function buildOfficeKit(): OfficeKitRender {
       case 'chair':
         buildChair(g, darkMetal);
         break;
+      case 'phone': {
+        const body = plain('#1c1a18', 0.45);
+        add(g, box(0.22, 0.06, 0.18), body, 0, 0.03, 0);
+        add(g, box(0.1, 0.012, 0.08), plain('#d8d0bc', 0.6), 0.04, 0.066, 0.02, false);
+        const handset = add(g, box(0.22, 0.045, 0.055), body, 0, 0.085, -0.055);
+        handset.rotation.z = 0.04;
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= 40; i++) {
+          const t = i / 40;
+          pts.push(new THREE.Vector3(-0.11 - t * 0.12 + Math.cos(t * 50) * 0.01, 0.06 - t * 0.055 + Math.sin(t * 50) * 0.01, -0.055 + t * 0.12));
+        }
+        g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 80, 0.004, 4), body));
+        phone = g;
+        break;
+      }
       case 'cup': {
         const red = part.p?.color === 'red';
         const h = part.h - (red ? 0.05 : 0);
@@ -343,6 +363,7 @@ export function buildOfficeKit(): OfficeKitRender {
   let t = 0;
   return {
     root,
+    phone,
     fanPos,
     fanSpeed: () => speed,
     update(dt, s) {

@@ -115,3 +115,21 @@ test('room tour', async ({ page }) => {
   }
   writeFileSync(`${dir}/perf.json`, JSON.stringify(perf, null, 1));
 });
+
+test('seated classic office shares the desk set', async ({ page }) => {
+  mkdirSync(OUT, { recursive: true });
+  await page.goto(`${process.env.E2E_URL ?? ''}/?perf=high`);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Play as Guest' }).click();
+  await page.getByRole('button', { name: 'Clock In' }).click();
+  await page.getByText('Classic Office (solo)').click();
+  await page.locator('#create-lobby').click();
+  await page.locator('#start-btn').click();
+  await page.waitForTimeout(6000);
+  await page.mouse.move(640, 360);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: `${OUT}/seated-office-centre.jpg`, type: 'jpeg', quality: 85 });
+  await page.mouse.move(120, 360);
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${OUT}/seated-office-left.jpg`, type: 'jpeg', quality: 85 });
+});

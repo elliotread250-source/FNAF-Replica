@@ -31,7 +31,8 @@ export type OfficePartKind =
   | 'lamp'
   | 'bin'
   | 'cabinet'
-  | 'cobweb';
+  | 'cobweb'
+  | 'phone';
 
 export interface OfficePart {
   id: string;
@@ -124,6 +125,19 @@ export const OFFICE_KIT: OfficePart[] = [
     // Seat and gas column as one low box; the backrest (south side, the guard faces north) as a thin slab.
     boxes: [solid(24.75, 25.25, 50.55, 51.05, 0, 0.5, true), solid(24.78, 25.22, 51.0, 51.1, 0.5, 1.05)],
     note: 'Five-star swivel chair, split vinyl seat. The seat interaction puts the guard here.',
+  },
+  {
+    id: 'office.phone',
+    kind: 'phone',
+    x: 23.8,
+    y: DESK_TOP,
+    z: 49.2,
+    w: 0.24,
+    h: 0.1,
+    d: 0.2,
+    ry: 10,
+    policy: 'surface',
+    note: 'Desk phone with a coiled handset cord, under the phone interactable (23.8, 0.9, 49.2).',
   },
   { id: 'office.cup.1', kind: 'cup', x: 25.98, y: DESK_TOP, z: 49.62, w: 0.09, h: 0.17, d: 0.09, ry: 0, policy: 'surface', p: { color: 'red' }, note: 'Red and white soda cup, lid and straw.' },
   { id: 'office.cup.2', kind: 'cup', x: 26.58, y: DESK_TOP, z: 49.55, w: 0.08, h: 0.12, d: 0.08, ry: 0, policy: 'surface', p: { color: 'white' }, note: 'Coffee cup, stained rim.' },
