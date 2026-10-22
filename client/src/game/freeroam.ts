@@ -187,6 +187,9 @@ export class FreeRoam {
   private lastCam: string | null = null;
   private camSwitchT = 0;
   private cornerLights: THREE.SpotLight[] = [];
+  private lastDoorSum = -1;
+  private frameTimes = new Float32Array(240);
+  private frameN = 0;
   private subtitleQueue: string[] = [];
   private subtitleT = 0;
   private ringT = 0;
@@ -224,6 +227,24 @@ export class FreeRoam {
     clip: (open: boolean) => (this.clipboardOpen = open),
     remotes: () => [...this.remotes.entries()].filter(([, v]) => v.rig.root.visible).map(([id]) => id),
     powerState: () => ({ main: this.sim.power.main, circuits: [...this.sim.power.circuits] }),
+    /** Frame-time and renderer counters over the last 240 frames (dev/test only, like the rest of debug). */
+    perf: () => {
+      const n = Math.min(this.frameN, this.frameTimes.length);
+      const ts = Array.from(this.frameTimes.slice(0, n)).sort((a, b) => a - b);
+      const avg = ts.reduce((a, b) => a + b, 0) / Math.max(1, n);
+      const info = getRenderer().gl.info;
+      return {
+        frames: n,
+        fps: avg > 0 ? 1 / avg : 0,
+        avgMs: avg * 1000,
+        p95Ms: (ts[Math.floor(n * 0.95)] ?? 0) * 1000,
+        calls: info.render.calls,
+        triangles: info.render.triangles,
+        geometries: info.memory.geometries,
+        textures: info.memory.textures,
+        colliders: this.sim.level.colliders.length,
+      };
+    },
     agent: (id: string, x: number, z: number, y = 0, yaw = 0) => {
       const a = this.sim.agents.find((q) => q.id === id);
       if (a) Object.assign(a, { x, z, y, yaw });
@@ -253,6 +274,7 @@ export class FreeRoam {
     };
     const r = getRenderer();
     this.render = new WorldRender(sim.level, r.quality);
+    this.render.calm = store.settings.photosensitive;
     this.scene.add(this.render.root);
     this.nightVis = new NightVisuals(this.sim);
     this.scene.add(this.nightVis.root);
@@ -467,6 +489,10 @@ export class FreeRoam {
   frame(dt: number, t: number): void {
     this.time = t;
     const r = getRenderer();
+    // Per-frame stats for debug.perf(): count every pass of this frame (shadows, feeds, post) together.
+    r.gl.info.autoReset = false;
+    r.gl.info.reset();
+    this.frameTimes[this.frameN++ % this.frameTimes.length] = dt;
     const u = r.post.uniforms;
     if (this.scareT > 0) {
       const s = this.jumpscare.update(dt);
@@ -1042,7 +1068,7 @@ export class FreeRoam {
     fc.rotation.order = 'YXZ';
     fc.rotation.set(cam.pitch, cam.yaw + Math.sin(this.time * 0.25) * 0.12, 0);
     fc.updateMatrixWorld(true);
-    this.render.cull(cam.room, 1);
+    this.render.cull(cam.room, 1, [], this.sim.world.doorOpen);
     this.syncRigVisibility();
     this.flash.visible = false;
     this.beam.visible = false;
@@ -1064,7 +1090,7 @@ export class FreeRoam {
     ir.target.position.copy(was.tgt);
     ir.color.copy(was.c);
     (this.scene.fog as THREE.FogExp2).density = savedFog;
-    this.render.cull(this.lastRoom, 2);
+    this.render.cull(this.lastRoom, 3, [], this.sim.world.doorOpen);
     this.syncRigVisibility();
     const audioOnly = Boolean(cam.audioOnly);
     r.renderCrt(this.feedTarget.texture, {
@@ -1281,9 +1307,13 @@ export class FreeRoam {
     const cam = this.camera.position;
     const b = this.me.body;
     const room = this.render.roomAt(b.x, b.y + 0.5, b.z);
-    if (room !== this.lastRoom) {
+    // Re-cull on room changes and whenever a door changes state (a door opening reveals what's behind it).
+    let doorSum = 0;
+    for (const v of this.sim.world.doorOpen) doorSum += v < 0.05 ? 0 : 1;
+    if (room !== this.lastRoom || doorSum !== this.lastDoorSum) {
       this.lastRoom = room;
-      this.render.cull(room, 2);
+      this.lastDoorSum = doorSum;
+      this.render.cull(room, 3, [], this.sim.world.doorOpen);
     }
     this.render.update(dt, this.power, cam, room);
     const ol = this.sim.office;

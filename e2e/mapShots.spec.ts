@@ -1,5 +1,5 @@
 import { test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { ROOMS } from '../shared/src/world/layout';
 
 // Manual: real in-game captures of the Security Office hero views (docs/MAP_REBUILD_PROGRESS.md, spec 6).
@@ -79,6 +79,7 @@ test('room tour', async ({ page }) => {
   });
   await page.waitForTimeout(3000);
   const only = process.env.ROOMS ? process.env.ROOMS.split(',') : null;
+  const perf: Record<string, unknown> = {};
   // The canonical rooms are shot from where a 2014 camera (or a guard walking in) would see them.
   const look = (x: number, z: number, tx: number, tz: number) => ({ x, z, yaw: Math.atan2(-(tx - x), -(tz - z)) });
   const VIEWS: Record<string, { x: number; z: number; yaw: number }> = {
@@ -110,5 +111,7 @@ test('room tour', async ({ page }) => {
     await page.evaluate(({ x, z, y, yaw }) => (globalThis as unknown as { __fr: Fr }).__fr.debug.teleport(x, z, y, yaw, -0.08), { x: sx, z: sz, y: r.floorY, yaw });
     await page.waitForTimeout(1100);
     await page.screenshot({ path: `${dir}/${r.id}.jpg`, type: 'jpeg', quality: 80 });
+    perf[r.id] = await page.evaluate(() => (globalThis as unknown as { __fr: { debug: { perf(): unknown } } }).__fr.debug.perf());
   }
+  writeFileSync(`${dir}/perf.json`, JSON.stringify(perf, null, 1));
 });
