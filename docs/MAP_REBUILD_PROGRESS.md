@@ -13,6 +13,17 @@ is marked done without a test or a real in-game capture behind it.
   posters, door panels or shutter hardware. The honk hotspot at (24.5, 1.9, 48.15) had nothing drawn behind it.
   Floor was the light-wood office style and the walls were plain dirt-tinted beige.
 
+## Verification run on this branch
+
+- `npm run typecheck`, `npx eslint .`: clean. `vitest run` with Postgres: 125/125.
+- `e2e/freeRoam.spec.ts` (four browsers, free roam): fails at line 78 (the main breaker doesn't come on within
+  10 s). It fails at the same line on the untouched baseline commit `008ad87`, so it predates this work and still
+  needs its own fix.
+- `e2e/fourPlayers.spec.ts` (classic four stations, which uses none of the changed code): passed 1 of 4 runs on
+  this branch and 1 of 1 on baseline. Every failure was the tablet's camera button not appearing within 12 s,
+  with four swiftshader browsers sharing one container. Treat it as load-flaky, not as proof either way.
+- Office captures: `MAP_SHOTS=1 npx playwright test mapShots` passes and writes the images below.
+
 ## Phase P2/P3: collision and doors (done)
 
 Shipped in `shared/src/sim/fr/collision.ts`, `shared/src/sim/fr/controller.ts`, `shared/src/world/layout.ts`.
