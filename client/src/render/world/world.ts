@@ -4,6 +4,7 @@ import { BatchSet } from './batch';
 import { EXTERIOR, makeStyles, TRIM, type StyleMats } from './materials';
 import { buildProp } from './props';
 import { buildOfficeKit, type OfficeKitRender } from './officeKit';
+import { buildRoomKits } from './roomKits';
 
 /** Which circuits are live. The game owns this; the renderer only reads it. */
 export interface PowerView {
@@ -134,6 +135,7 @@ export class WorldRender {
     }
     this.officeKit = buildOfficeKit();
     groupFor('office').add(this.officeKit.root);
+    for (const [room, g] of buildRoomKits().byRoom) groupFor(room).add(g);
     this.buildWindows();
     for (const d of level.doors) this.buildDoor(d, groupFor(this.roomOfDoor(d)));
     this.buildFixtures(groupFor);

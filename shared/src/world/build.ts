@@ -1,5 +1,6 @@
 import { createRng, next } from '../rng';
 import { officeKitColliders } from './officeKit';
+import { roomKitColliders } from './roomKits';
 import { CAMERAS, HIDE_SPECS, INTERACTABLES, ITEM_SPAWNS, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
 import type {
   AudioZone,
@@ -322,7 +323,7 @@ export function buildLevel(): Level {
   // 6. Props.
   const props = PROPS.map((p) => ({ ...p }));
   for (const p of props) colliders.push(...propColliders(p));
-  colliders.push(...officeKitColliders());
+  colliders.push(...officeKitColliders(), ...roomKitColliders());
 
   // 7. Lights.
   const lights = buildLights(roomById);
@@ -416,7 +417,9 @@ function buildLights(roomById: Record<string, RoomDef>): LightDef[] {
             y: r.floorY + r.ceilH - (kind === 'pendant' ? 1.0 : 0.12),
             kind,
             color: warm ? '#ffd9a0' : r.style === 'tile' || r.style === 'steel' ? '#d8f0ff' : '#eef0f4',
-            intensity: kind === 'pendant' ? 80 : kind === 'caged' ? 22 : kind === 'bulb' ? 18 : 34,
+            // Dim, institutional light: pools under fixtures, dark corners between them (the old values washed
+            // every lit room out to white).
+            intensity: kind === 'pendant' ? 36 : kind === 'caged' ? 12 : kind === 'bulb' ? 10 : 15,
             circuit: r.circuit,
             flicker,
             real: true,

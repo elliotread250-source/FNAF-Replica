@@ -301,8 +301,7 @@ for (let i = 0; i < 4; i++) block('parts', 70.5 + i * 3, 31, 1.4, 1.4, 1.9, 'she
 block('parts', 80.4, 28, 0.8, 5, 2.0, 'steel', { label: 'crates' });
 
 // Supply closet, manager, dock
-block('supply', 29, 54.5, 0.8, 3, 2.0, 'wood', { label: 'shelves' });
-block('supply', 35.4, 54.5, 0.8, 3, 2.0, 'wood', { label: 'shelves' });
+// Supply closet shelves and cabinet: roomKits.ts.
 block('manager', 55, 51.2, 2.4, 1.0, 0.78, 'wood', { label: 'desk' });
 block('manager', 57.5, 54.6, 0.8, 0.8, 1.4, 'steel', { label: 'filing cabinet' });
 for (let i = 0; i < 5; i++) block('dock', 70 + (i % 3) * 1.2, 52 + Math.floor(i / 3) * 1.2, 1.0, 1.0, 1.0 + (i % 2) * 0.8, 'crate', {});
@@ -428,7 +427,7 @@ export const ITEM_SPAWNS: ItemSpawnDef[] = [
   { x: 40, y: 1.1, z: 6.8, room: 'lobby', types: ['battery'] },
   { x: 55, y: 0.83, z: 51.2, room: 'manager', types: ['battery', 'fuse'] },
   { x: 26, y: 1.15, z: 2.0, room: 'prize', types: ['battery'] },
-  { x: 58, y: 2.05, z: 59.4, room: 'bServer', types: ['fuse'] },
+  { x: 58, y: 2.05 + BASEMENT_Y, z: 59.75, room: 'bServer', types: ['fuse'] }, // on the rack top's front edge (was y 2.05 in world space: inside the ground floor)
   { x: 12, y: 1.65 + BASEMENT_Y, z: 58, room: 'bOld', types: ['battery'] },
   { x: 72, y: 0.05, z: 30, room: 'parts', types: ['fuse'] },
 ];

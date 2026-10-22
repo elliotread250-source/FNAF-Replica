@@ -241,7 +241,7 @@ export class CollisionWorld {
     dy: number,
     dz: number,
     maxT: number,
-    opts: { glass?: boolean; only?: Collider['kind'][]; skipDoor?: number } = {},
+    opts: { glass?: boolean; only?: Collider['kind'][]; skipDoor?: number; skipAround?: [number, number, number] } = {},
   ): number {
     const ex = ox + dx * maxT;
     const ez = oz + dz * maxT;
@@ -252,6 +252,10 @@ export class CollisionWorld {
       if (c.kind === 'glass' && opts.glass === false) continue;
       if (opts.only && !opts.only.includes(c.kind)) continue;
       if (opts.skipDoor !== undefined && c.door === opts.skipDoor) continue;
+      if (opts.skipAround && c.kind === 'prop') {
+        const [px, py, pz] = opts.skipAround;
+        if (px > c.x1 - 0.05 && px < c.x2 + 0.05 && py > c.y1 - 0.05 && py < c.y2 + 0.05 && pz > c.z1 - 0.05 && pz < c.z2 + 0.05) continue;
+      }
       const t = rayBox(ox, oy, oz, dx, dy, dz, c);
       if (t >= 0 && t < best && t <= maxT) best = t;
     }
@@ -279,9 +283,10 @@ export class CollisionWorld {
   }
 
   /**
-   * Can a hand at the eye reach a point? Walls, doors and glass may not cross the line at all; furniture may only
-   * sit within the last 0.45 m (the thing you reach for is often on, in or behind its own furniture). The client
-   * prompt uses the same 0.45 m slack, so what highlights is what the server accepts.
+   * Can a hand at the eye reach a point? Walls, doors and glass may not cross the line at all. Furniture that
+   * holds the point (a shelf with a fuse on a tier, the desk under the phone) doesn't count; other furniture may
+   * only sit within the last 0.45 m. The client prompt calls this too, so what highlights is what the server
+   * accepts.
    */
   canReach(ex: number, ey: number, ez: number, tx: number, ty: number, tz: number, skipDoor?: number): boolean {
     const dx = tx - ex;
@@ -293,7 +298,7 @@ export class CollisionWorld {
     const uy = dy / d;
     const uz = dz / d;
     if (this.raycast(ex, ey, ez, ux, uy, uz, d, { only: ['wall', 'door', 'glass'], skipDoor }) < d - 0.06) return false;
-    return this.raycast(ex, ey, ez, ux, uy, uz, d, { skipDoor }) >= d - 0.45;
+    return this.raycast(ex, ey, ez, ux, uy, uz, d, { skipDoor, skipAround: [tx, ty, tz] }) >= d - 0.45;
   }
 
   /** Line of sight between two points, ignoring glass if asked. */

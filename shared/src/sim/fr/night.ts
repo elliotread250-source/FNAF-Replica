@@ -2,6 +2,7 @@ import { FR } from '../../frConfig';
 import { BREAKER_GROUPS, FUSE_BOXES, PLATE_TABLES } from '../../world/layout';
 import type { CircuitId, ItemType } from '../../world/types';
 import type { FrPlayer, FrSim } from './sim';
+import { eyeHeight } from './controller';
 
 // The night's jobs (Part 5): the building's power pool and drain, the main breaker load puzzle, blown
 // fuses and zone switches, the music box, the cupcakes, items and the inventory, and the early exit.
@@ -321,6 +322,7 @@ export class NightState {
     const it = this.items[id];
     if (!it || it.holder || it.plate >= 0 || it.y < -100) return;
     if (Math.hypot(it.x - p.body.x, it.z - p.body.z) > 2.2 || Math.abs(it.y - (p.body.y + 1)) > 1.8) return;
+    if (!this.sim.world.canReach(p.body.x, p.body.y + eyeHeight(p.body), p.body.z, it.x, it.y, it.z)) return;
     if (this.carried(p).length >= MAX_SLOTS) {
       this.sim.emit({ t: 'nopower', pid: p.id, text: 'Your hands are full.' });
       return;

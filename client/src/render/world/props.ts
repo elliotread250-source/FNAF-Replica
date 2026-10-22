@@ -130,8 +130,14 @@ export function buildProp(def: PropDef): PropBuild {
       const w = num('w', 1);
       const h = num('h', 1);
       const d = num('d', 1);
-      const mat = blockMat(String(def.p?.mat ?? 'steel'));
+      const stall = def.p?.label === 'stall';
+      // Restroom partitions are painted steel with a darker edge cap, not tile.
+      const mat = stall ? std('#b8b098', 0.45, 0.35) : blockMat(String(def.p?.mat ?? 'steel'));
       const mesh = add(g, boxGeo(w, h, d), mat, 0, h / 2, 0);
+      if (stall) {
+        add(g, boxGeo(w + 0.02, 0.04, d + 0.02), std('#6a6658', 0.4, 0.6), 0, h - 0.02, 0, false);
+        add(g, boxGeo(w + 0.02, h, 0.04), std('#6a6658', 0.4, 0.6), 0, h / 2, d / 2 - 0.02, false);
+      }
       const mt = String(def.p?.mat);
       if (mt === 'sheet') {
         mesh.scale.set(1, 1, 1);

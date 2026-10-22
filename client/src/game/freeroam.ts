@@ -1334,10 +1334,8 @@ export class FreeRoam {
       if (d > reach + extra || d < 1e-3) return;
       const dot = (dx * dir.x + dy * dir.y + dz * dir.z) / d;
       if (dot < bestScore) return;
-      if (needLos) {
-        const hit = this.sim.world.raycast(cam.x, cam.y, cam.z, dx / d, dy / d, dz / d, d);
-        if (hit < d - 0.45) return;
-      }
+      // Same rule the server applies, so the prompt only shows for things the server will accept.
+      if (needLos && !this.sim.world.canReach(cam.x, cam.y, cam.z, x, y, z)) return;
       best = make();
       bestScore = dot;
     };

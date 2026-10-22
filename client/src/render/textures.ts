@@ -179,15 +179,32 @@ export function confettiWall(seed = 2, base = '#3a2f4a'): THREE.Texture {
  * a black-and-white checker band with a thin red trim over it, then mottled dingy grey block paint above with
  * water marks running down from the ceiling and exposed nail heads.
  */
-export function officeWall(seed = 31): THREE.Texture {
-  return cached(`officewall:${seed}`, () => {
-    const [c, ctx] = canvas(512);
+export function officeWall(seed = 31, base = '#5f5c56', confetti = false, tall = false): THREE.Texture {
+  const key = `officewall:${seed}:${base}:${confetti}:${tall}`;
+  return cached(key, () => {
+    // 3 m wide; 3 m tall, or 6 m for the high rooms (the caller halves the V repeat) so the band appears once.
+    const H = tall ? 1024 : 512;
+    const [c, ctx] = canvas(512, H);
     const rng = createRng(seed);
     const px = 512 / 3; // pixels per metre
-    const Y = (m: number) => 512 - m * px; // canvas y for a height in metres
+    const Y = (m: number) => H - m * px; // canvas y for a height in metres
     // Upper wall: painted block, mottled.
-    ctx.fillStyle = '#5f5c56';
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, 512, Y(1.24));
+    if (confetti) {
+      // Faded party confetti stencilled on the public walls.
+      const cols = ['#c43a3a', '#3a8ac4', '#e8c22c', '#3ab05a', '#c44fd0', '#ffffff'];
+      for (let i = 0; i < 160; i++) {
+        ctx.save();
+        ctx.translate(r(rng, 0, 512), r(rng, 0, Y(1.3)));
+        ctx.rotate(r(rng, 0, Math.PI));
+        ctx.fillStyle = cols[Math.floor(next(rng) * cols.length)];
+        ctx.globalAlpha = r(rng, 0.25, 0.55);
+        ctx.fillRect(-4, -1.5, 8, 3);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    }
     for (let row = 0; row < 9; row++) {
       const y0 = Y(1.24 + (row + 1) * 0.2);
       const off = (row % 2) * 0.2 * px;
@@ -225,7 +242,7 @@ export function officeWall(seed = 31): THREE.Texture {
     ctx.fillRect(0, Y(1.24), 512, 0.04 * px);
     ctx.fillStyle = '#1c1a18';
     ctx.fillRect(0, Y(0.12), 512, 0.12 * px);
-    grime(ctx, 512, 512, rng, 1.8, '30,24,10');
+    grime(ctx, 512, H, rng, 1.8, '30,24,10');
     // Water marks from the ceiling and grime pooled along the skirting.
     for (let i = 0; i < 5; i++) {
       const x = r(rng, 0, 500);
@@ -242,7 +259,7 @@ export function officeWall(seed = 31): THREE.Texture {
     ctx.fillRect(0, Y(0.3), 512, 0.3 * px);
     ctx.fillStyle = '#1a1612';
     for (let i = 0; i < 6; i++) ctx.fillRect(r(rng, 0, 510), r(rng, 20, Y(1.4)), 2, 2);
-    return tex(`officewall:${seed}`, c, 1);
+    return tex(key, c, 1);
   });
 }
 
@@ -513,7 +530,7 @@ export function stripesTex(): THREE.Texture {
 }
 
 /** A poster: band poster, "Celebrate!", or a kid drawing. */
-export function posterTex(kind: 'celebrate' | 'leader' | 'drawing' | 'eyeless' | 'rules', seed = 11, names: string[] = []): THREE.Texture {
+export function posterTex(kind: 'celebrate' | 'leader' | 'drawing' | 'eyeless' | 'rules' | 'eat', seed = 11, names: string[] = []): THREE.Texture {
   return cached(`poster:${kind}:${seed}:${names.join()}`, () => {
     const [c, ctx] = canvas(256, 352);
     const rng = createRng(seed);
@@ -570,9 +587,10 @@ export function posterTex(kind: 'celebrate' | 'leader' | 'drawing' | 'eyeless' |
     ctx.font = 'bold 40px "Rubik Glitch", "Special Elite", sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText(kind === 'leader' ? (names[0] ?? 'FREDDY').toUpperCase() : 'CELEBRATE!', 128, 52);
+    ctx.fillText(kind === 'leader' ? (names[0] ?? 'FREDDY').toUpperCase() : kind === 'eat' ? "LET'S EAT!!!" : 'CELEBRATE!', 128, 52);
     // Cartoon heads.
-    const heads = kind === 'leader' ? [['#6b4423', 128, 200, 70]] : [['#5b5fb8', 60, 200, 34], ['#6b4423', 128, 190, 40], ['#e8c22c', 196, 200, 34]];
+    const heads =
+      kind === 'leader' ? [['#6b4423', 128, 200, 70]] : kind === 'eat' ? [['#e8c22c', 128, 200, 72]] : [['#5b5fb8', 60, 200, 34], ['#6b4423', 128, 190, 40], ['#e8c22c', 196, 200, 34]];
     for (const [col, x, y, s] of heads as [string, number, number, number][]) {
       ctx.fillStyle = col;
       ctx.beginPath();
