@@ -188,6 +188,10 @@ export class FreeRoam {
   private camSwitchT = 0;
   private cornerLights: THREE.SpotLight[] = [];
   private lastDoorSum = -1;
+  /** Last authoritative position from the server (net play), for the collider overlay. */
+  private serverPos: { x: number; y: number; z: number } | null = null;
+  private overlay: THREE.LineSegments | null = null;
+  private overlayT = 0;
   private frameTimes = new Float32Array(240);
   private frameN = 0;
   private subtitleQueue: string[] = [];
@@ -222,6 +226,11 @@ export class FreeRoam {
     flash: (on: boolean) => (this.flashOn = on),
     hideUi: () => {
       this.ui.pause.style.display = 'none';
+    },
+    /** Toggle the F9 collider overlay from tests. */
+    overlay: (on: boolean) => {
+      this.debugOn = on;
+      this.ui.debug.style.display = on ? 'block' : 'none';
     },
     act: (a: FrAct) => (this.actQueued = a),
     clip: (open: boolean) => (this.clipboardOpen = open),
@@ -656,7 +665,10 @@ export class FreeRoam {
     for (const h of this.history) this.predict(h.cmd, sim.dt, false);
     // Small corrections are smoothed by shifting the interpolation origin; big ones snap.
     const err = Math.hypot(me.body.x - before.x, me.body.z - before.z);
-    if (err > 0.01 && err < 1.5) {
+    this.serverPos = { x: m.body.x, y: m.body.y, z: m.body.z };
+    // Never blend across a wall: if anything solid lies between the predicted and corrected spots, snap.
+    const across = !sim.world.clearLine(before.x, before.y + 0.9, before.z, me.body.x, me.body.y + 0.9, me.body.z, true);
+    if (err > 0.01 && err < 1.5 && !across) {
       this.prev.x += me.body.x - before.x;
       this.prev.z += me.body.z - before.z;
       this.prev.y += me.body.y - before.y;
@@ -1349,6 +1361,72 @@ export class FreeRoam {
 
   // ---- Interaction -------------------------------------------------------------------------------
 
+  /**
+   * F9 developer overlay (local or test builds only): wireframe colliders within 10 m, doors in their posed
+   * shape (yellow), glass (cyan), props (orange), the body cylinder at the feet and head (green), the last
+   * server position (red), and the interaction ray to the current target (white).
+   */
+  private updateOverlay(dt: number): void {
+    if (!this.debugOn) {
+      if (this.overlay) this.overlay.visible = false;
+      return;
+    }
+    this.overlayT -= dt;
+    if (this.overlay && this.overlayT > 0) return;
+    this.overlayT = 0.2;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const c = new THREE.Color();
+    const seg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, hex: string) => {
+      c.set(hex);
+      pos.push(ax, ay, az, bx, by, bz);
+      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    };
+    const boxLines = (b: { x1: number; x2: number; y1: number; y2: number; z1: number; z2: number }, hex: string) => {
+      const xs = [b.x1, b.x2];
+      const ys = [b.y1, b.y2];
+      const zs = [b.z1, b.z2];
+      for (const y of ys) for (const z of zs) seg(b.x1, y, z, b.x2, y, z, hex);
+      for (const x of xs) for (const z of zs) seg(x, b.y1, z, x, b.y2, z, hex);
+      for (const x of xs) for (const y of ys) seg(x, y, b.z1, x, y, b.z2, hex);
+    };
+    const b = this.me.body;
+    const R = 10;
+    for (const k of this.sim.world.query(b.x - R, b.z - R, b.x + R, b.z + R, [])) {
+      if (k.kind === 'floor' || k.kind === 'ceiling') continue;
+      if (Math.abs((k.y1 + k.y2) / 2 - b.y) > 6) continue;
+      boxLines(k, k.kind === 'door' ? '#ffd21a' : k.kind === 'glass' ? '#40e0ff' : k.kind === 'prop' || k.kind === 'step' ? '#ff8a30' : '#8a8aff');
+    }
+    const ring = (x: number, y: number, z: number, r: number, hex: string) => {
+      for (let i = 0; i < 16; i++) {
+        const a0 = (i / 16) * Math.PI * 2;
+        const a1 = ((i + 1) / 16) * Math.PI * 2;
+        seg(x + Math.cos(a0) * r, y, z + Math.sin(a0) * r, x + Math.cos(a1) * r, y, z + Math.sin(a1) * r, hex);
+      }
+    };
+    ring(b.x, b.y + 0.02, b.z, FR.player.RADIUS, '#40ff60');
+    ring(b.x, b.y + b.height, b.z, FR.player.RADIUS, '#40ff60');
+    if (this.serverPos) {
+      ring(this.serverPos.x, this.serverPos.y + 0.04, this.serverPos.z, FR.player.RADIUS, '#ff3030');
+      seg(this.serverPos.x, this.serverPos.y, this.serverPos.z, this.serverPos.x, this.serverPos.y + 1.8, this.serverPos.z, '#ff3030');
+    }
+    const t = this.target;
+    if (t && t.kind === 'item') seg(this.camera.position.x, this.camera.position.y, this.camera.position.z, t.item.x, t.item.y, t.item.z, '#ffffff');
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    if (!this.overlay) {
+      this.overlay = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true, opacity: 0.85 }));
+      this.overlay.renderOrder = 999;
+      this.overlay.frustumCulled = false;
+      this.scene.add(this.overlay);
+    } else {
+      this.overlay.geometry.dispose();
+      this.overlay.geometry = geo;
+    }
+    this.overlay.visible = true;
+  }
+
   private findTarget(): Target {
     if (this.me.hidden || this.me.downed || this.me.ghost) return null;
     const cam = this.camera.position;
@@ -1520,6 +1598,7 @@ export class FreeRoam {
     this.ui.ring.style.display = ringPct > 0.01 ? 'block' : 'none';
     this.ui.ring.style.background = `conic-gradient(rgba(240,234,216,0.85) ${ringPct * 360}deg, rgba(240,234,216,0.12) 0deg)`;
     if (this.mapOpen) this.drawMap();
+    this.updateOverlay(dt);
     if (this.debugOn) {
       const lines = this.sim.agents.map((a) => {
         const d = Object.entries(a.detect)

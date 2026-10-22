@@ -18,6 +18,7 @@ type Fr = {
     power(main: boolean, circuits?: string[]): void;
     act(a: unknown): void;
     agent(id: string, x: number, z: number): void;
+    overlay(on: boolean): void;
   };
   me: { body: { stance: number; height: number } };
   stanceToggle: number;
@@ -60,6 +61,9 @@ test('security office hero views', async ({ page }) => {
   await frame(page, 'office-closeup-left-panel-and-track', tp(23.2, 50.0, W + 0.5, -0.25));
   await frame(page, 'office-shutters-closed', `for (const i of [${fr}.sim.office.doorL, ${fr}.sim.office.doorR]) { ${fr}.sim.doorTarget[i] = 0; ${fr}.sim.world.doorOpen[i] = 0; } ${tp(25, 52.5, N, -0.05)}`);
   await frame(page, 'office-power-out', `${fr}.debug.power(false); ${tp(25, 53.5, N, -0.1)}`, 4000);
+  // Collider overlay (F9): the office kit boxes, the shutters, a swing door caught half open.
+  await frame(page, 'overlay-office', `${fr}.debug.power(true, ['office']); ${fr}.debug.overlay(true); ${tp(25, 54.6, N, -0.35)}`, 1200);
+  await frame(page, 'overlay-door-half-open', `for (const d of ${fr}.sim.level.doors) if (d.name === 'Staff Entrance interior door') { ${fr}.sim.doorTarget[d.id] = 0.5; ${fr}.sim.world.doorOpen[d.id] = 0.5; } ${tp(5, 63.2, N, -0.25)}`, 1200);
 });
 
 // One wide frame per room, from inside a corner looking across it at standing eye height.
