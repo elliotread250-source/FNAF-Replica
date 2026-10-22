@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
+import { BREAKER_GROUPS } from '../shared/src/world/layout';
 
 // Four browsers play a FAST_NIGHT free-roam Night 1. Driving first-person mouse look headless is flaky, so
 // the test uses the TEST_HOOKS API (window.__fr) to teleport players to objectives and press them.
@@ -26,8 +27,32 @@ type Fr = {
     powerState(): { main: boolean; circuits: string[] };
     hideUi(): void;
   };
-  sim: { players: Map<string, unknown> };
+  sim: {
+    players: Map<string, unknown>;
+    night: { loads: number[]; band: [number, number]; blown: Set<number>; breakers: boolean[] };
+    level: { interactables: { id: string; x: number; z: number; y: number; circuit?: string }[] };
+  };
 };
+
+/**
+ * The master lever only holds when the switched-on breaker load sits inside the night's green band, and a zone
+ * only lights if its breaker is on and its fuse isn't blown. Pick a lit-able zone and a breaker set that does it.
+ */
+function plan(night: { loads: number[]; band: [number, number]; blown: number[] }): { breakers: number[]; circuit: string } {
+  const office = BREAKER_GROUPS.findIndex((g) => g.id === 'office');
+  for (let target = 0; target < BREAKER_GROUPS.length; target++) {
+    if (target === office || night.blown.includes(target) || BREAKER_GROUPS[target].id === 'basement') continue;
+    for (let mask = 0; mask < 1 << BREAKER_GROUPS.length; mask++) {
+      if (!(mask & (1 << target))) continue;
+      let load = 0;
+      for (let i = 0; i < BREAKER_GROUPS.length; i++) if (mask & (1 << i)) load += night.loads[i];
+      if (load < night.band[0] || load > night.band[1]) continue;
+      const breakers = BREAKER_GROUPS.map((_, i) => i).filter((i) => mask & (1 << i));
+      return { breakers, circuit: BREAKER_GROUPS[target].circuits[0] };
+    }
+  }
+  throw new Error('no breaker plan for this night');
+}
 
 test('four guards walk the free-roam pizzeria together and reach 6 AM', async ({ browser }, info) => {
   const stamp = Date.now().toString(36).slice(-5);
@@ -68,22 +93,34 @@ test('four guards walk the free-roam pizzeria together and reach 6 AM', async ({
   }
   await shot(p1, 'spawn');
 
-  // Player 1 goes down to the Breaker Room and throws the main breaker; everyone sees the power come on.
+  // Player 1 goes down to the Breaker Room, sets the breakers into the green band and throws the main breaker;
+  // everyone sees the power come on.
+  const night = await p1.evaluate(() => {
+    const n = (globalThis as unknown as { __fr: Fr }).__fr.sim.night;
+    return { loads: [...n.loads], band: n.band, blown: [...n.blown] };
+  });
+  const { breakers, circuit } = plan(night);
   await p1.evaluate(() => {
     const fr = (globalThis as unknown as { __fr: Fr }).__fr;
     fr.debug.teleport(23.4, 60, -4.5, Math.PI / 2);
   });
   await p1.waitForTimeout(500);
+  for (const i of breakers) {
+    await p1.evaluate((id) => (globalThis as unknown as { __fr: Fr }).__fr.debug.act({ type: 'item', id }), `breaker:${i}`);
+    await expect.poll(() => p1.evaluate((k) => (globalThis as unknown as { __fr: Fr }).__fr.sim.night.breakers[k], i), { timeout: 5_000 }).toBe(true);
+  }
   await p1.evaluate(() => (globalThis as unknown as { __fr: Fr }).__fr.debug.act({ type: 'item', id: 'main-breaker' }));
   for (const p of pages) await expect.poll(() => p.evaluate(() => (globalThis as unknown as { __fr: Fr }).__fr.debug.powerState().main), { timeout: 10_000 }).toBe(true);
 
-  // Player 2 lights the Dining Hall at its switch.
-  await p2.evaluate(() => (globalThis as unknown as { __fr: Fr }).__fr.debug.teleport(34.5, 11.2, 0, 0));
+  // Player 2 walks to that zone's switch and lights it; all four see the circuit come on.
+  const sw = await p2.evaluate((c) => (globalThis as unknown as { __fr: Fr }).__fr.sim.level.interactables.find((i) => i.id === `switch:${c}`), circuit);
+  expect(sw).toBeDefined();
+  await p2.evaluate(({ x, z }) => (globalThis as unknown as { __fr: Fr }).__fr.debug.teleport(x, z, 0, 0), { x: sw?.x ?? 0, z: sw?.z ?? 0 });
   await p2.waitForTimeout(500);
-  await p2.evaluate(() => (globalThis as unknown as { __fr: Fr }).__fr.debug.act({ type: 'item', id: 'switch:dining' }));
-  for (const p of pages) await expect.poll(() => p.evaluate(() => (globalThis as unknown as { __fr: Fr }).__fr.debug.powerState().circuits.includes('dining')), { timeout: 10_000 }).toBe(true);
+  await p2.evaluate((id) => (globalThis as unknown as { __fr: Fr }).__fr.debug.act({ type: 'item', id }), `switch:${circuit}`);
+  for (const p of pages) await expect.poll(() => p.evaluate((c) => (globalThis as unknown as { __fr: Fr }).__fr.debug.powerState().circuits.includes(c), circuit), { timeout: 10_000 }).toBe(true);
   await p2.waitForTimeout(800);
-  await shot(p2, 'dining-lit');
+  await shot(p2, 'zone-lit');
 
   // 6 AM and the paycheck on every screen.
   for (const p of pages) await expect(p.locator('#paycheck')).toBeVisible({ timeout: 120_000 });
