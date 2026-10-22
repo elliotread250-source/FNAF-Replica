@@ -35,7 +35,11 @@ export type KitKind =
   | 'puddle'
   | 'rack'
   | 'board'
-  | 'toilet';
+  | 'toilet'
+  | 'timeclock'
+  | 'coats'
+  | 'lockers'
+  | 'keypad';
 
 export interface KitPart {
   id: string;
@@ -168,6 +172,11 @@ for (const [i, room] of ['party1', 'party2', 'party3', 'party4'].entries()) {
   wall(`${room}.poster`, room, 'poster', 'x', 3.175, zc + 5.2, 1.8, 0.8, 1.1, 90, 'Theme poster.', { art: i === 3 ? 'eyeless' : 'celebrate', seed: 80 + i });
 }
 wall('staff.board', 'staff', 'board', 'x', 2.175, 63, 1.6, 1.4, 0.9, 90, 'Noticeboard: rotas, a missing-child flyer, safety notices.', { seed: 12 });
+// Staff Entrance: exterior walls on three sides (faces 0.175 in). Spawns stand at x 3.5 / 6.5, z 61.5 / 63.5.
+wall('staff.timeclock', 'staff', 'timeclock', 'x', 7.825, 64.7, 1.35, 0.32, 0.42, -90, 'Punch clock with a rack of time cards.');
+wall('staff.coats', 'staff', 'coats', 'x', 2.175, 61.0, 1.55, 1.3, 0.9, 90, 'Coat hooks: two jackets and a stained apron. Soft cloth, no collider.');
+solid('staff.lockers', 'staff', 'lockers', 2.45, 64.95, 0.5, 1.3, 1.8, 90, 'Three scuffed half-height staff lockers.');
+wall('staff.keypad', 'staff', 'keypad', 'z', 65.825, 6.65, 1.4, 0.16, 0.22, 180, 'Alarm keypad beside the exit, one red LED.');
 ROOM_KITS.push({ id: 'staff.mat', room: 'staff', kind: 'puddle', x: 5, y: 0.004, z: 65.2, w: 1.4, h: 0.002, d: 0.8, ry: 0, policy: 'flat', p: { mat: true }, note: 'Rubber doormat by the exit.' });
 wall('lounge.board', 'lounge', 'board', 'z', 59.825, 10.5, 1.6, 1.6, 0.9, 180, 'Employee of the month board.', { seed: 13 });
 solid('utility.crates', 'utility', 'crates', 58.5, 58.35, 1.6, 0.9, 1.2, 0, 'Stacked supply crates against the south wall.');

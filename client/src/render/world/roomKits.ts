@@ -431,6 +431,40 @@ export function buildRoomKits(): RoomKitBuild {
         add(g, box(0.38, 0.32, 0.17), china, 0, 0.6, -0.24);
         break;
       }
+      case 'timeclock': {
+        add(g, box(0.26, 0.32, 0.12), plain('#a8a090', 0.6, 0.2), 0, 0, 0.06);
+        add(g, new THREE.CircleGeometry(0.08, 20), plain('#f0ece0', 0.5), 0, 0.05, 0.121, false);
+        add(g, box(0.004, 0.06, 0.004), plain('#111'), 0, 0.07, 0.124, false);
+        for (let i = 0; i < 6; i++) add(g, box(0.06, 0.12, 0.004), plain('#e8dcc0', 0.9), -0.12 + (i % 3) * 0.12, -0.32 - Math.floor(i / 3) * 0.14, 0.01 + i * 0.0005, false);
+        add(g, box(0.4, 0.3, 0.02), plain('#5a5448', 0.7), 0, -0.39, 0.004, false);
+        break;
+      }
+      case 'coats': {
+        add(g, box(decalW, 0.06, 0.03), new THREE.MeshStandardMaterial({ map: woodTex(15, '#5a3a22'), roughness: 0.8 }), 0, 0.35, 0.015);
+        const cols = ['#2a3a5a', '#4a3a2a', '#e8e0d0'];
+        for (let i = 0; i < 3; i++) {
+          const x = -decalW / 2 + 0.25 + i * 0.4;
+          add(g, cyl(0.012, 0.012, 0.08, 6), plain('#888', 0.4, 0.8), x, 0.32, 0.06, false).rotation.x = Math.PI / 2;
+          const coat = add(g, cyl(0.12, 0.2, 0.75 - (i === 2 ? 0.15 : 0), 10), plain(cols[i], 0.95), x, 0.32 - (0.75 - (i === 2 ? 0.15 : 0)) / 2, 0.11);
+          coat.scale.z = 0.45;
+        }
+        break;
+      }
+      case 'lockers': {
+        for (let i = 0; i < 3; i++) {
+          const x = -lw / 2 + (i + 0.5) * (lw / 3);
+          add(g, box(lw / 3 - 0.01, p.h, ld), plain(i === 1 ? '#4a5a6a' : '#3a4a58', 0.5, 0.5), x, p.h / 2, 0);
+          for (let v = 0; v < 4; v++) add(g, box(lw / 3 - 0.12, 0.012, 0.005), plain('#141414', 0.8), x, p.h - 0.2 - v * 0.04, ld / 2 + 0.003, false);
+          add(g, box(0.03, 0.08, 0.02), plain('#9a9a9a', 0.4, 0.8), x + lw / 6 - 0.06, p.h * 0.55, ld / 2 + 0.01, false);
+        }
+        break;
+      }
+      case 'keypad': {
+        add(g, box(decalW, p.h, 0.03), plain('#d8d4c8', 0.5), 0, 0, 0.015);
+        for (let i = 0; i < 12; i++) add(g, box(0.025, 0.02, 0.008), plain('#3a3a3a', 0.6), -0.04 + (i % 3) * 0.04, 0.04 - Math.floor(i / 3) * 0.03, 0.032, false);
+        add(g, new THREE.SphereGeometry(0.008, 6, 4), new THREE.MeshStandardMaterial({ color: '#200', emissive: '#ff2010', emissiveIntensity: 2 }), 0.05, 0.085, 0.032, false);
+        break;
+      }
       case 'barrels': {
         for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
           if (next(rng) < 0.15) continue;
