@@ -609,6 +609,7 @@ export class FrSim {
       const mx = d.axis === 'z' ? (d.from + d.to) / 2 : d.line;
       const mz = d.axis === 'z' ? d.line : (d.from + d.to) / 2;
       if (Math.hypot(mx - b.x, mz - b.z) > reach + (d.to - d.from) / 2 || Math.abs(b.y - d.floorY) > 1.5) return;
+      if (!this.world.canReach(b.x, b.y + eyeHeight(b), b.z, mx, d.floorY + 1.0, mz, d.id)) return;
       if (d.locked) {
         this.emit({ t: 'locked', pid: p.id, door: d.id, text: d.locked });
         return;
@@ -623,6 +624,8 @@ export class FrSim {
     if (act.type === 'item') {
       const it = this.level.interactables.find((i) => i.id === act.id);
       if (!it || Math.hypot(it.x - b.x, it.z - b.z) > reach || Math.abs(it.y - (b.y + 1.2)) > 2) return;
+      // No pressing a switch, breaker or plate through a wall: the server checks the line, not just the range.
+      if (!this.world.canReach(b.x, b.y + eyeHeight(b), b.z, it.x, it.y, it.z)) return;
       if (it.type === 'officeChair') return this.office.sit(p);
       if (it.type === 'phone') return this.office.answer(p);
       if (it.type === 'boothDesk') return this.office.lure(p);

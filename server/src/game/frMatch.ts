@@ -4,6 +4,7 @@ import {
   FrSim,
   IDLE_CMD,
   eyeHeight,
+  levelChecksum,
   type FrCmd,
   type FrEvent,
   type FrSnap,
@@ -98,6 +99,7 @@ export class FrMatch {
       band: this.sim.night.band,
       plates: this.sim.night.plates,
       requiredZones: this.sim.night.requiredZones,
+      layout: levelChecksum(),
     };
     this.o.send(pid, 'fr:start', start);
   }

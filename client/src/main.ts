@@ -19,7 +19,7 @@ import { startVoice } from './net/voice';
 import { getRenderer } from './render/renderer';
 import { h } from './ui/dom';
 import type { NightEnd, NightStart } from './game/types';
-import type { FrStart } from '@fnaf/shared';
+import { levelChecksum, type FrStart } from '@fnaf/shared';
 
 function noiseOverlay(): void {
   const c = document.createElement('canvas');
@@ -43,9 +43,20 @@ function noiseOverlay(): void {
   }, 80);
 }
 
+function staleBundle(): void {
+  const msg = h('div', { class: 'overlay-full loading', style: 'background:#000' }, 'The pizzeria has been remodelled. Reloading...');
+  document.body.appendChild(msg);
+  setTimeout(() => location.reload(), 1500);
+}
+
 function wireNight(s: ReturnType<typeof getSocket>): void {
   s.on('night:start', (start: NightStart) => go('game', { start }));
   s.on('fr:start', (start: FrStart) => {
+    // The server's building differs from this bundle's: an old cached client would walk through new walls.
+    if (start.layout && start.layout !== levelChecksum()) {
+      staleBundle();
+      return;
+    }
     if (currentScreen() !== 'freeroam') go('freeroam', { mode: 'night', net: start });
   });
   s.on('night:end', (e: NightEnd) => (e.mode === 'freeroam' ? deliverFrEnd(e) : deliverNightEnd(e)));

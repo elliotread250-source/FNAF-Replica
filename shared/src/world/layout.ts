@@ -179,7 +179,8 @@ export const INTERACTABLES: InteractableDef[] = [
   sw('dining', 'dining', 34.5, 10.1, 0),
   sw('lobby', 'lobby', 30.1, 6, 90),
   sw('stage', 'booth', 67.9, 25, -90),
-  sw('cove', 'cove', 4.1, 14, 90),
+  // In the strip in front of the cove deck, so it can be reached from the floor (the deck is a 0.4 m jump).
+  sw('cove', 'cove', 4.1, 10.5, 90),
   sw('party', 'westHall', 10.1, 29.6, 90),
   sw('play', 'play', 20, 47.9, 180),
   sw('restroom', 'restCorr', 39.9, 36, -90),

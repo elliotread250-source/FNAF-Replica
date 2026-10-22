@@ -7,6 +7,7 @@ import type {
   Collider,
   FrDoorDef,
   Flicker,
+  InteractableDef,
   LightDef,
   Level,
   OpeningDef,
@@ -111,6 +112,28 @@ function lightKindFor(room: RoomDef): LightDef['kind'] {
 }
 
 let cached: Level | null = null;
+let checksum: string | null = null;
+
+/**
+ * A short hash of everything collision and interaction depend on: colliders, doors, interactables and spawns.
+ * Server and client compare it at the start of a free-roam match so a browser running an old bundle can't
+ * predict movement against walls the server no longer has.
+ */
+export function levelChecksum(): string {
+  if (checksum) return checksum;
+  const lv = getLevel();
+  let h = 0x811c9dc5;
+  const mix = (v: number) => {
+    h ^= Math.round(v * 1000) | 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  };
+  for (const c of lv.colliders) [c.x1, c.x2, c.y1, c.y2, c.z1, c.z2, c.door ?? -1].forEach(mix);
+  for (const d of lv.doors) [d.line, d.from, d.to, d.height, d.swing, d.hinge === 'from' ? 1 : 2, d.kind.length].forEach(mix);
+  for (const i of lv.interactables) [i.x, i.y, i.z, i.id.length].forEach(mix);
+  for (const sp of lv.spawns) [sp.x, sp.y, sp.z].forEach(mix);
+  checksum = h.toString(16).padStart(8, '0');
+  return checksum;
+}
 
 export function getLevel(): Level {
   if (!cached) cached = buildLevel();
@@ -319,7 +342,7 @@ export function buildLevel(): Level {
     props,
     colliders,
     lights,
-    interactables: INTERACTABLES,
+    interactables: mountOnWalls(INTERACTABLES, colliders),
     spawns: SPAWNS,
     itemSpawns: ITEM_SPAWNS,
     cameras: CAMERAS,
@@ -335,6 +358,32 @@ export function buildLevel(): Level {
     bounds: { x1: bounds.x1, z1: bounds.z1, x2: bounds.x2, z2: bounds.z2 },
     links: Object.fromEntries([...links].map(([k, v]) => [k, [...v]])),
   };
+}
+
+/**
+ * Wall-mounted controls are authored 0.1 m off the wall line, which is right for 0.2 m interior walls but buries
+ * them in 0.35 m exterior walls. Push any that start inside a wall out along their facing until they sit on the
+ * face, so the plate you see is on the surface and the hand can reach it.
+ */
+function mountOnWalls(items: InteractableDef[], colliders: Collider[]): InteractableDef[] {
+  const mounted = new Set<InteractableDef['type']>(['zoneSwitch', 'fuseBox', 'breaker', 'mainBreaker']);
+  const walls = colliders.filter((c) => c.kind === 'wall');
+  return items.map((it) => {
+    if (!mounted.has(it.type)) return it;
+    const nx = Math.sin((it.ry * Math.PI) / 180);
+    const nz = Math.cos((it.ry * Math.PI) / 180);
+    const out = { ...it };
+    const inside = () => walls.some((c) => out.x > c.x1 && out.x < c.x2 && out.z > c.z1 && out.z < c.z2 && out.y > c.y1 && out.y < c.y2);
+    for (let i = 0; i < 40 && inside(); i++) {
+      out.x += nx * 0.01;
+      out.z += nz * 0.01;
+    }
+    if (out !== it && (out.x !== it.x || out.z !== it.z)) {
+      out.x += nx * 0.015;
+      out.z += nz * 0.015;
+    }
+    return out;
+  });
 }
 
 function wallBox(axis: 'x' | 'z', line: number, a: number, b: number, y1: number, y2: number, thick: number, kind: Collider['kind']): Collider {

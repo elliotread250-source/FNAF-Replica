@@ -229,8 +229,20 @@ export class CollisionWorld {
     return best;
   }
 
-  /** Ray against all active boxes, optionally ignoring glass. Returns the hit distance or Infinity. */
-  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, opts: { glass?: boolean } = {}): number {
+  /**
+   * Ray against all active boxes. `glass: false` ignores glass, `only` limits the kinds that count, `skipDoor`
+   * ignores one door (the one being reached for). Returns the hit distance or Infinity.
+   */
+  raycast(
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    maxT: number,
+    opts: { glass?: boolean; only?: Collider['kind'][]; skipDoor?: number } = {},
+  ): number {
     const ex = ox + dx * maxT;
     const ez = oz + dz * maxT;
     const near = this.query(Math.min(ox, ex) - 0.05, Math.min(oz, ez) - 0.05, Math.max(ox, ex) + 0.05, Math.max(oz, ez) + 0.05, []);
@@ -238,6 +250,8 @@ export class CollisionWorld {
     for (const c of near) {
       if (!this.isActive(c)) continue;
       if (c.kind === 'glass' && opts.glass === false) continue;
+      if (opts.only && !opts.only.includes(c.kind)) continue;
+      if (opts.skipDoor !== undefined && c.door === opts.skipDoor) continue;
       const t = rayBox(ox, oy, oz, dx, dy, dz, c);
       if (t >= 0 && t < best && t <= maxT) best = t;
     }
@@ -262,6 +276,24 @@ export class CollisionWorld {
       if (out.walls + out.doors >= 3) break;
     }
     return out;
+  }
+
+  /**
+   * Can a hand at the eye reach a point? Walls, doors and glass may not cross the line at all; furniture may only
+   * sit within the last 0.45 m (the thing you reach for is often on, in or behind its own furniture). The client
+   * prompt uses the same 0.45 m slack, so what highlights is what the server accepts.
+   */
+  canReach(ex: number, ey: number, ez: number, tx: number, ty: number, tz: number, skipDoor?: number): boolean {
+    const dx = tx - ex;
+    const dy = ty - ey;
+    const dz = tz - ez;
+    const d = Math.hypot(dx, dy, dz);
+    if (d < 1e-3) return true;
+    const ux = dx / d;
+    const uy = dy / d;
+    const uz = dz / d;
+    if (this.raycast(ex, ey, ez, ux, uy, uz, d, { only: ['wall', 'door', 'glass'], skipDoor }) < d - 0.06) return false;
+    return this.raycast(ex, ey, ez, ux, uy, uz, d, { skipDoor }) >= d - 0.45;
   }
 
   /** Line of sight between two points, ignoring glass if asked. */

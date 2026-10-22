@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Socket } from 'socket.io-client';
-import { IDLE_CMD, type FrSnap, type FrStart } from '@fnaf/shared';
+import { IDLE_CMD, levelChecksum, type FrSnap, type FrStart } from '@fnaf/shared';
 import { agent, emitAck, freshApp, socketFor, waitFor } from './setup';
 import type { App } from '../src/app';
 import type { DbHandle } from '../src/db/client';
@@ -39,6 +39,8 @@ describe('free-roam multiplayer', () => {
     const st = await Promise.all(starts);
     expect(new Set(st.map((s) => s.you)).size).toBe(4);
     expect(st[0].players.length).toBe(4);
+    // Every client is told which building the server simulates, so a stale bundle can reload.
+    for (const s of st) expect(s.layout).toBe(levelChecksum());
     const me0 = st[0].you;
 
     // Player 0 walks north for a second (30 commands); player 1 watches the snapshots.

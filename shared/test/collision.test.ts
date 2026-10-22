@@ -386,3 +386,35 @@ describe('four guards at once', () => {
     expect(play()).toEqual(play());
   });
 });
+
+describe('interaction reach', () => {
+  const w = new CollisionWorld(level);
+  w.doorOpen.fill(1);
+  const reach = FR.player.INTERACT_RANGE + 1.0;
+
+  it('every interactable can be reached by a standing guard from somewhere in the building', () => {
+    const unreachable: string[] = [];
+    for (const it of level.interactables) {
+      const fy = level.roomById[it.room]?.floorY ?? 0;
+      let ok = false;
+      for (let r = 0.6; r <= 2.2 && !ok; r += 0.2) {
+        for (let a = 0; a < 32 && !ok; a++) {
+          const x = it.x + Math.cos((a / 32) * Math.PI * 2) * r;
+          const z = it.z + Math.sin((a / 32) * Math.PI * 2) * r;
+          const g = w.groundAt(x, fy, z, P.RADIUS, P.STEP_HEIGHT);
+          if (g === -Infinity || Math.abs(g - fy) > 1.2 || w.blocked(x, g, z, P.RADIUS, P.HEIGHT_STAND, P.STEP_HEIGHT)) continue;
+          if (Math.hypot(it.x - x, it.z - z) > reach || Math.abs(it.y - (g + 1.2)) > 2) continue;
+          ok = w.canReach(x, g + P.EYE_STAND, z, it.x, it.y, it.z);
+        }
+      }
+      if (!ok) unreachable.push(it.id);
+    }
+    expect(unreachable).toEqual([]);
+  });
+
+  it('a switch cannot be pressed from the other side of its wall', () => {
+    const sw = level.interactables.find((i) => i.id === 'switch:office')!; // on the office's west wall, x = 22.1
+    expect(w.canReach(21.6, P.EYE_STAND, sw.z, sw.x, sw.y, sw.z)).toBe(false);
+    expect(w.canReach(23.0, P.EYE_STAND, sw.z, sw.x, sw.y, sw.z)).toBe(true);
+  });
+});
