@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import type { CircuitId, FrDoorDef, LightDef, Level, StyleId, WallRun } from '@fnaf/shared';
+import { doorLeaves, SHUTTER_HEADROOM, type CircuitId, type FrDoorDef, type LightDef, type Level, type StyleId, type WallRun } from '@fnaf/shared';
 import { BatchSet } from './batch';
 import { EXTERIOR, makeStyles, TRIM, type StyleMats } from './materials';
 import { buildProp } from './props';
+import { buildOfficeKit, type OfficeKitRender } from './officeKit';
 
 /** Which circuits are live. The game owns this; the renderer only reads it. */
 export interface PowerView {
@@ -33,6 +34,8 @@ export class WorldRender {
   readonly roomGroups = new Map<string, THREE.Group>();
   readonly doors = new Map<number, DoorVisual>();
   readonly fixtures: Fixture[] = [];
+  /** The Security Office's desk, CRTs, fan and wall dressing (shared catalogue: OFFICE_KIT). */
+  readonly officeKit: OfficeKitRender;
   private styles: Record<StyleId, StyleMats>;
   private pool: { light: THREE.PointLight; fixture: Fixture | null; level: number }[] = [];
   private cellRoom = new Map<string, string>();
@@ -129,6 +132,8 @@ export class WorldRender {
         this.glowMats.set(p.room, list);
       }
     }
+    this.officeKit = buildOfficeKit();
+    groupFor('office').add(this.officeKit.root);
     this.buildWindows();
     for (const d of level.doors) this.buildDoor(d, groupFor(this.roomOfDoor(d)));
     this.buildFixtures(groupFor);
@@ -245,18 +250,14 @@ export class WorldRender {
     v.open = open;
     const d = v.def;
     const alongX = d.axis === 'z';
-    const swing = d.swing;
+    // Hinged leaves and shutters are posed with the same numbers the collision uses (doorLeaves, doorBoxes).
     if (d.kind === 'swing' || d.kind === 'exit' || d.kind === 'glass') {
-      const sgn = (alongX ? -1 : 1) * (d.hinge === 'from' ? 1 : -1);
-      v.pivot.rotation.y = sgn * swing * open * (Math.PI / 2) * 0.94;
+      v.pivot.rotation.y = doorLeaves(d, open)[0].angle;
     } else if (d.kind === 'double') {
-      for (const sub of v.slabs) {
-        const side = sub.userData.side as number;
-        const sgn = (alongX ? -1 : 1) * (side === -1 ? 1 : -1);
-        sub.rotation.y = sgn * swing * open * (Math.PI / 2) * 0.94;
-      }
+      const leaves = doorLeaves(d, open);
+      for (const sub of v.slabs) sub.rotation.y = leaves[(sub.userData.side as number) === -1 ? 0 : 1].angle;
     } else if (d.kind === 'shutter' || d.kind === 'roller') {
-      v.slabs[0].position.y = d.height / 2 + open * (d.height - 0.15);
+      v.slabs[0].position.y = d.height / 2 + open * (d.height - SHUTTER_HEADROOM);
     } else {
       // Curtain: slides aside by shrinking.
       v.slabs[0].scale.set(alongX ? Math.max(0.12, 1 - open * 0.88) : 1, 1, alongX ? 1 : Math.max(0.12, 1 - open * 0.88));

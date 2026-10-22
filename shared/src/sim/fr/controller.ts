@@ -273,8 +273,13 @@ function tryVault(b: Body, world: CollisionWorld, dx: number, dz: number): boole
     if (c.y2 > top) top = c.y2;
   }
   if (top === -Infinity || top - b.y > P.VAULT_MAX + 1e-6) return false;
-  // Landing spot: first free ground beyond the obstacle, within 2.4 m.
+  // Landing spot: first free ground beyond the obstacle, within 2.4 m. The body passes over the obstacle's
+  // top on the way, so anything taller than that on the line (a wall behind a low table) ends the search:
+  // vaulting must never carry you through a wall into the next room.
+  const clear = (t: number) => !world.blocked(b.x + ux * t, top, b.z + uz * t, P.RADIUS * 0.6, P.HEIGHT_CROUCH, 0.02);
+  for (let s = 0.1; s < probe + 0.25; s += 0.1) if (!clear(s)) return false;
   for (let t = probe + 0.25; t <= 2.4; t += 0.2) {
+    if (!clear(t - 0.1) || !clear(t)) return false;
     const lx = b.x + ux * t;
     const lz = b.z + uz * t;
     if (world.blocked(lx, b.y, lz, P.RADIUS, P.HEIGHT_STAND, P.STEP_HEIGHT)) continue;

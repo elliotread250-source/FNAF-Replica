@@ -174,6 +174,103 @@ export function confettiWall(seed = 2, base = '#3a2f4a'): THREE.Texture {
   });
 }
 
+/**
+ * The Security Office wall, 3 m square at world scale (v = 0 at the floor): dark skirting, grey lower tiles,
+ * a black-and-white checker band with a thin red trim over it, then mottled dingy grey block paint above with
+ * water marks running down from the ceiling and exposed nail heads.
+ */
+export function officeWall(seed = 31): THREE.Texture {
+  return cached(`officewall:${seed}`, () => {
+    const [c, ctx] = canvas(512);
+    const rng = createRng(seed);
+    const px = 512 / 3; // pixels per metre
+    const Y = (m: number) => 512 - m * px; // canvas y for a height in metres
+    // Upper wall: painted block, mottled.
+    ctx.fillStyle = '#5f5c56';
+    ctx.fillRect(0, 0, 512, Y(1.24));
+    for (let row = 0; row < 9; row++) {
+      const y0 = Y(1.24 + (row + 1) * 0.2);
+      const off = (row % 2) * 0.2 * px;
+      ctx.strokeStyle = 'rgba(30,28,24,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y0 + 0.5);
+      ctx.lineTo(512, y0 + 0.5);
+      for (let x = -off; x < 512; x += 0.4 * px) {
+        ctx.moveTo(x + 0.5, y0);
+        ctx.lineTo(x + 0.5, y0 + 0.2 * px);
+      }
+      ctx.stroke();
+    }
+    // Lower wall: grey ceramic tiles.
+    ctx.fillStyle = '#3c3c3a';
+    ctx.fillRect(0, Y(0.9), 512, Y(0.12) - Y(0.9));
+    for (let y = 0.12; y < 0.9; y += 0.15)
+      for (let x = 0; x < 3; x += 0.15) {
+        const v = r(rng, 70, 92);
+        ctx.fillStyle = `rgb(${v},${v},${v - 3})`;
+        ctx.fillRect(x * px + 1, Y(Math.min(0.9, y + 0.15)) + 1, 0.15 * px - 2, Math.min(0.15, 0.9 - y) * px - 2);
+      }
+    // Checker band, two rows of 0.15 m tiles.
+    for (let row = 0; row < 2; row++)
+      for (let i = 0; i < 20; i++) {
+        const v = (i + row) % 2 ? r(rng, 210, 230) : r(rng, 14, 26);
+        ctx.fillStyle = `rgb(${v},${v},${v - 4})`;
+        ctx.fillRect(i * 0.15 * px, Y(0.9 + (row + 1) * 0.15), 0.15 * px, 0.15 * px);
+        ctx.strokeStyle = 'rgba(40,36,28,0.7)';
+        ctx.strokeRect(i * 0.15 * px + 0.5, Y(0.9 + (row + 1) * 0.15) + 0.5, 0.15 * px - 1, 0.15 * px - 1);
+      }
+    // Red trim and dark skirting.
+    ctx.fillStyle = '#8a1414';
+    ctx.fillRect(0, Y(1.24), 512, 0.04 * px);
+    ctx.fillStyle = '#1c1a18';
+    ctx.fillRect(0, Y(0.12), 512, 0.12 * px);
+    grime(ctx, 512, 512, rng, 1.8, '30,24,10');
+    // Water marks from the ceiling and grime pooled along the skirting.
+    for (let i = 0; i < 5; i++) {
+      const x = r(rng, 0, 500);
+      const g = ctx.createLinearGradient(x, 0, x, r(rng, 120, 300));
+      g.addColorStop(0, 'rgba(50,38,16,0.45)');
+      g.addColorStop(1, 'rgba(50,38,16,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, 0, r(rng, 4, 16), 320);
+    }
+    const sk = ctx.createLinearGradient(0, Y(0.3), 0, 512);
+    sk.addColorStop(0, 'rgba(20,16,8,0)');
+    sk.addColorStop(1, 'rgba(20,16,8,0.45)');
+    ctx.fillStyle = sk;
+    ctx.fillRect(0, Y(0.3), 512, 0.3 * px);
+    ctx.fillStyle = '#1a1612';
+    for (let i = 0; i < 6; i++) ctx.fillRect(r(rng, 0, 510), r(rng, 20, Y(1.4)), 2, 2);
+    return tex(`officewall:${seed}`, c, 1);
+  });
+}
+
+/** Grey 0.3 m floor tiles with dirt packed into the grout, at world scale (one repeat = 2.4 m). */
+export function officeFloor(seed = 32): THREE.Texture {
+  return cached(`officefloor:${seed}`, () => {
+    const [c, ctx] = canvas(512);
+    const rng = createRng(seed);
+    ctx.fillStyle = '#211e1a';
+    ctx.fillRect(0, 0, 512, 512);
+    const n = 8;
+    const s = 512 / n;
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const v = r(rng, 92, 112);
+        ctx.fillStyle = `rgb(${v},${v - 2},${v - 6})`;
+        ctx.fillRect(x * s + 2, y * s + 2, s - 4, s - 4);
+        // Speckled vinyl composition tile.
+        for (let k = 0; k < 40; k++) {
+          ctx.fillStyle = `rgba(${next(rng) < 0.5 ? '40,38,34' : '170,166,156'},0.5)`;
+          ctx.fillRect(x * s + r(rng, 3, s - 4), y * s + r(rng, 3, s - 4), 2, 2);
+        }
+      }
+    grime(ctx, 512, 512, rng, 1.6, '30,24,12');
+    return tex(`officefloor:${seed}`, c, 1);
+  });
+}
+
 export function tileWall(seed = 3, base = '#9ab8b0'): THREE.Texture {
   return cached(`tile:${seed}:${base}`, () => {
     const [c, ctx] = canvas(256);

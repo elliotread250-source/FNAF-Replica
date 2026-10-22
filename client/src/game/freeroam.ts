@@ -284,6 +284,8 @@ export class FreeRoam {
       .then(() => {
         audio.startLoop('fr_drone', 'drone');
         audio.startLoop('fr_hum', 'light_hum');
+        audio.startLoop('fr_fan', 'fan');
+        audio.loopGain('fr_fan', 0);
         audio.loopGain('fr_hum', 0);
       })
       .catch(() => {});
@@ -1288,11 +1290,24 @@ export class FreeRoam {
     const opow = this.sim.circuitOn('office');
     this.cornerLights[0].intensity = opow && ol.lights.L ? 40 : 0;
     this.cornerLights[1].intensity = opow && ol.lights.R ? 40 : 0;
+    const kit = this.render.officeKit;
+    const dOpen = this.sim.world.doorOpen;
+    kit.update(dt, {
+      powered: opow,
+      doorL: ol.doorL >= 0 && dOpen[ol.doorL] < 0.5,
+      doorR: ol.doorR >= 0 && dOpen[ol.doorR] < 0.5,
+      lightL: ol.lights.L,
+      lightR: ol.lights.R,
+      monitorUp: ol.monitorUp,
+    });
     this.syncRigVisibility();
     const sc = this.scene.fog as THREE.FogExp2;
     const lit = this.render.ambient.intensity > 0.2;
     if (audio.ready) {
       audio.loopGain('fr_hum', lit ? 0.5 : 0, 0.6);
+      // The office fan: loud at the desk, gone a room away, winding down with the power.
+      const fd = this.camera.position.distanceTo(kit.fanPos);
+      audio.loopGain('fr_fan', kit.fanSpeed() * Math.max(0, 1 - fd / 7) * 0.35, 0.3);
       audio.loopGain('fr_drone', lit ? 0.15 : 0.5, 0.8);
     }
     sc.density += ((lit ? 0.008 : 0.028) - sc.density) * Math.min(1, dt * 2);

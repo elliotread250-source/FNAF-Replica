@@ -1,4 +1,5 @@
 import { createRng, next } from '../rng';
+import { officeKitColliders } from './officeKit';
 import { CAMERAS, HIDE_SPECS, INTERACTABLES, ITEM_SPAWNS, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
 import type {
   AudioZone,
@@ -298,6 +299,7 @@ export function buildLevel(): Level {
   // 6. Props.
   const props = PROPS.map((p) => ({ ...p }));
   for (const p of props) colliders.push(...propColliders(p));
+  colliders.push(...officeKitColliders());
 
   // 7. Lights.
   const lights = buildLights(roomById);
@@ -393,6 +395,9 @@ function buildLights(roomById: Record<string, RoomDef>): LightDef[] {
   if (westHall) westHall.flicker = 'buzz';
   const parts = out.find((l) => l.room === 'parts');
   if (parts) parts.flicker = 'spark';
+  // The Security Office has one warm bulb on a cord over the desk, not a ceiling tube (see officeKit.ts).
+  const office = out.find((l) => l.room === 'office');
+  if (office) Object.assign(office, { kind: 'bulb', x: 25, z: 50.3, y: 2.38, color: '#ffcf96', intensity: 8, flicker: 'none' });
   // Neon signs and the prize corner spots.
   push({ room: 'prize', x: 22, y: 3.2, z: 0.4, kind: 'neon', color: '#ff5fb0', intensity: 12, circuit: 'always', flicker: 'none', real: true });
   push({ room: 'stage', x: 61, y: 4.2, z: 11, kind: 'neon', color: '#4aa0ff', intensity: 14, circuit: 'stage', flicker: 'buzz', real: true });
