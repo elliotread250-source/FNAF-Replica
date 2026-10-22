@@ -81,6 +81,14 @@ test('room tour', async ({ page }) => {
     w.__fr.debug.hideUi();
     for (const id of ['freddy', 'bonnie', 'chica', 'foxy']) w.__fr.debug.agent(id, 61, 15);
   });
+  if (process.env.NIGHT) {
+    // Unpowered: mains off, only emergency lamps and the guard's flashlight.
+    await page.evaluate(() => {
+      const fr = (globalThis as unknown as { __fr: { debug: { power(m: boolean): void; flash(on: boolean): void } } }).__fr;
+      fr.debug.power(false);
+      fr.debug.flash(true);
+    });
+  }
   await page.waitForTimeout(3000);
   const only = process.env.ROOMS ? process.env.ROOMS.split(',') : null;
   const perf: Record<string, unknown> = {};

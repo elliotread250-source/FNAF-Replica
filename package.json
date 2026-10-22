@@ -25,6 +25,7 @@
     "test:e2e": "playwright test",
     "sim:classic": "tsx --tsconfig tsconfig.base.json scripts/simClassic.ts",
     "map:render": "tsx --tsconfig tsconfig.base.json scripts/mapRender.ts",
+    "map:inventory": "tsx --tsconfig tsconfig.base.json scripts/mapInventory.ts",
     "sim:balance": "tsx --tsconfig tsconfig.base.json scripts/balance.ts"
   },
   "devDependencies": {
