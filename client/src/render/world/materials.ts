@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { StyleId } from '@fnaf/shared';
-import { checkerFloor, confettiWall, curtainTex, dirtTex, metalTex, tileWall, woodTex } from '../textures';
+import { checkerFloor, confettiWall, curtainTex, dirtTex, metalTex, officeFloor, officeWall, tileWall, woodTex } from '../textures';
 
 export interface StyleMats {
   wall: THREE.MeshStandardMaterial;
@@ -26,6 +26,13 @@ function mat(map: THREE.Texture | null, color: string, rough = 0.9, extra: THREE
 
 const dirt = () => world(dirtTex(15));
 
+/** A 3 m x 6 m wall texture on world UVs (one V unit = 3 m), so walls up to 6 m never repeat the band. */
+function tall(t: THREE.Texture): THREE.Texture {
+  const c = world(t);
+  c.repeat.set(1, 0.5);
+  return c;
+}
+
 export function makeStyles(): Record<StyleId, StyleMats> {
   const checker = checkerFloor(1);
   const checkerMap = world(checker.map);
@@ -34,7 +41,6 @@ export function makeStyles(): Record<StyleId, StyleMats> {
   const tile = world(tileWall(3, '#a6c4bc'));
   const tileFloor = world(tileWall(8, '#788884'));
   const wood = world(woodTex(7, '#6a4426'));
-  const woodLight = world(woodTex(9, '#8a6240'));
   const curtain = world(curtainTex('#3a1450', true));
   const confetti = (seed: number, base: string) => world(confettiWall(seed, base));
 
@@ -45,13 +51,15 @@ export function makeStyles(): Record<StyleId, StyleMats> {
   const S = (wall: THREE.MeshStandardMaterial, floor: THREE.MeshStandardMaterial, ceil: THREE.MeshStandardMaterial, wallTile = 3, floorTile = 4): StyleMats => ({ wall, floor, ceil, wallTile, floorTile });
 
   return {
-    dining: S(mat(confetti(2, '#4a3a5c'), '#ffffff'), floorChecker(), ceilDark('#14100e')),
+    // The 2014 public rooms and halls: grimy grey block over a black-and-white checker band and red trim.
+    dining: S(mat(tall(officeWall(34, '#55525e', true, true)), '#ffffff', 0.92), floorChecker(), ceilDark('#14100e')),
     lobby: S(mat(confetti(3, '#30445c'), '#ffffff'), floorChecker(), ceilTiles()),
-    hall: S(mat(confetti(4, '#5c4468'), '#ffffff'), floorChecker(), ceilTiles()),
+    hall: S(mat(tall(officeWall(33, '#4e4c52', false, true)), '#ffffff', 0.92), floorChecker(), ceilTiles()),
     tile: S(mat(tile, '#ffffff', 0.4), mat(tileFloor, '#ffffff', 0.4), ceilTiles(), 2.4, 2.4),
     steel: S(mat(brushed, '#ffffff', 0.45, { metalness: 0.5 }), mat(tileFloor, '#b0b4b8', 0.5), ceilTiles(), 2.4, 2.4),
     concrete: S(mat(dirt(), '#7a766e', 1), mat(dirt(), '#5a5852', 0.95), mat(dirt(), '#4a4842', 1), 3, 3),
-    office: S(mat(dirt(), '#9a8f78', 1), mat(woodLight, '#b8a890', 0.7), ceilTiles(), 3, 2),
+    // Checker band, red trim and grimy grey block above, as in the 2014 office; 0.3 m speckled floor tiles.
+    office: S(mat(world(officeWall()), '#ffffff', 0.92), mat(world(officeFloor()), '#ffffff', 0.75), ceilTiles(), 3, 2.4),
     party1: S(mat(confetti(5, '#2a3a6a'), '#ffffff'), floorChecker(), ceilTiles()),
     party2: S(mat(confetti(6, '#6a4a2a'), '#ffffff'), mat(wood, '#ffffff', 0.7), ceilTiles(), 3, 2),
     party3: S(mat(confetti(7, '#7a3a5a'), '#ffffff'), floorChecker(), ceilTiles()),

@@ -144,11 +144,12 @@ open('x', 40, 53, 55, 'doorway', D('Pantry door'));
 open('x', 48, 53, 54, 'doorway', D('Freezer door', { height: 2.1 }));
 
 // Basement
-open('z', 64, 14, 16, 'doorway', D('Old Storage door', { locked: 'basement' }), BASEMENT_Y);
-open('z', 64, 25, 27, 'doorway', D('Breaker Room door'), BASEMENT_Y);
+// Basement doors swing into their rooms: a 2 m leaf opened into the 3 m hall would all but seal it.
+open('z', 64, 14, 16, 'doorway', D('Old Storage door', { locked: 'basement', swing: -1 }), BASEMENT_Y);
+open('z', 64, 25, 27, 'doorway', D('Breaker Room door', { swing: -1 }), BASEMENT_Y);
 open('z', 64, 35, 37, 'arch', undefined, BASEMENT_Y);
-open('z', 64, 44, 46, 'doorway', DD('Boiler Room doors'), BASEMENT_Y);
-open('z', 64, 57, 59, 'doorway', D('Server Room door'), BASEMENT_Y);
+open('z', 64, 44, 46, 'doorway', DD('Boiler Room doors', { swing: -1 }), BASEMENT_Y);
+open('z', 64, 57, 59, 'doorway', D('Server Room door', { swing: -1 }), BASEMENT_Y);
 
 export const SPAWNS: SpawnDef[] = [
   { id: 'p1', x: 3.5, z: 63.5, y: 0, yaw: -Math.PI / 2 },
@@ -178,7 +179,8 @@ export const INTERACTABLES: InteractableDef[] = [
   sw('dining', 'dining', 34.5, 10.1, 0),
   sw('lobby', 'lobby', 30.1, 6, 90),
   sw('stage', 'booth', 67.9, 25, -90),
-  sw('cove', 'cove', 4.1, 14, 90),
+  // In the strip in front of the cove deck, so it can be reached from the floor (the deck is a 0.4 m jump).
+  sw('cove', 'cove', 4.1, 10.5, 90),
   sw('party', 'westHall', 10.1, 29.6, 90),
   sw('play', 'play', 20, 47.9, 180),
   sw('restroom', 'restCorr', 39.9, 36, -90),
@@ -256,12 +258,14 @@ prop('steps', 'stage', 63, 21.5, 0, { w: 1.4, dir: 'z-', n: 3, run: 0.5 });
 // Lounge: lockers along the west wall, benches, table, vending
 for (let i = 0; i < 14; i++) prop('locker', 'lounge', 2.3, 51.0 + i * 0.6, 90, { n: i + 1, usable: [0, 2, 4, 6, 9, 12].includes(i) });
 block('lounge', 6, 54, 2.2, 1.0, 0.75, 'wood', { label: 'break table' });
-block('lounge', 12.6, 51, 0.9, 0.8, 1.9, 'vending', { label: 'vending machine' });
+// Clear of the West Hall double doors, which swing into the lounge.
+block('lounge', 12.6, 52.6, 0.9, 0.8, 1.9, 'vending', { label: 'vending machine' });
 block('lounge', 8.5, 58.6, 3, 0.5, 0.45, 'wood', { label: 'bench' });
 
 // Kitchen: prep island, ovens, range, shelving, decorating station
 block('kitchen', 44, 48, 6, 1.4, 0.95, 'steel', { label: 'prep island' });
-block('kitchen', 37.5, 46.5, 1.2, 4.5, 1.0, 'steel', { label: 'ovens' });
+// The ovens sit south of the front doors (x = 36, z 46..48) so the swinging leaves and the way in are clear.
+block('kitchen', 37.5, 50.4, 1.2, 2.9, 1.0, 'steel', { label: 'ovens' });
 block('kitchen', 44, 44.7, 6, 0.9, 1.0, 'steel', { label: 'range' });
 block('kitchen', 50.7, 49, 0.8, 4, 1.0, 'steel', { label: 'decorating station' });
 block('pantry', 36.5, 54, 0.6, 3, 2.0, 'steel', { label: 'pantry shelves' });
@@ -284,9 +288,7 @@ block('play', 17, 36, 4, 4, 1.2, 'play', { label: 'soft-play platform' });
 block('play', 27, 36, 4, 4, 1.2, 'play', { label: 'slide base' });
 block('play', 29.8, 44, 3, 0.8, 0.9, 'wood', { label: 'shoe cubbies' });
 
-// Security office: desk with monitors
-block('office', 25, 49.3, 3.4, 0.9, 0.78, 'wood', { label: 'security desk' });
-prop('chair', 'office', 25, 50.8, 0);
+// Security office: the desk, chair, CRTs and clutter live in officeKit.ts, shared with the renderer.
 
 // Restrooms
 for (let i = 0; i < 3; i++) block('men', 42 + i * 2, 33.2, 0.1, 2.2, 2.0, 'tile', { label: 'stall' });
@@ -299,8 +301,7 @@ for (let i = 0; i < 4; i++) block('parts', 70.5 + i * 3, 31, 1.4, 1.4, 1.9, 'she
 block('parts', 80.4, 28, 0.8, 5, 2.0, 'steel', { label: 'crates' });
 
 // Supply closet, manager, dock
-block('supply', 29, 54.5, 0.8, 3, 2.0, 'wood', { label: 'shelves' });
-block('supply', 35.4, 54.5, 0.8, 3, 2.0, 'wood', { label: 'shelves' });
+// Supply closet shelves and cabinet: roomKits.ts.
 block('manager', 55, 51.2, 2.4, 1.0, 0.78, 'wood', { label: 'desk' });
 block('manager', 57.5, 54.6, 0.8, 0.8, 1.4, 'steel', { label: 'filing cabinet' });
 for (let i = 0; i < 5; i++) block('dock', 70 + (i % 3) * 1.2, 52 + Math.floor(i / 3) * 1.2, 1.0, 1.0, 1.0 + (i % 2) * 0.8, 'crate', {});
@@ -426,7 +427,7 @@ export const ITEM_SPAWNS: ItemSpawnDef[] = [
   { x: 40, y: 1.1, z: 6.8, room: 'lobby', types: ['battery'] },
   { x: 55, y: 0.83, z: 51.2, room: 'manager', types: ['battery', 'fuse'] },
   { x: 26, y: 1.15, z: 2.0, room: 'prize', types: ['battery'] },
-  { x: 58, y: 2.05, z: 59.4, room: 'bServer', types: ['fuse'] },
+  { x: 58, y: 2.05 + BASEMENT_Y, z: 59.75, room: 'bServer', types: ['fuse'] }, // on the rack top's front edge (was y 2.05 in world space: inside the ground floor)
   { x: 12, y: 1.65 + BASEMENT_Y, z: 58, room: 'bOld', types: ['battery'] },
   { x: 72, y: 0.05, z: 30, room: 'parts', types: ['fuse'] },
 ];

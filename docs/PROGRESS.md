@@ -62,3 +62,7 @@ The Mimic, STAFF bots and the Into the Pit rabbit.
   memory rather than IndexedDB. Both are in DECISIONS.md.
 - Character jumpscares share one lunge animation with per-character timing and scream recipes; Foxy's
   runs in from the side, Golden Freddy fakes a crash, the Puppet rises then snaps.
+
+## Map rebuild
+
+See `docs/MAP_REBUILD_PROGRESS.md` (report), `docs/MAP_INVENTORY.md` (generated visual-to-collider inventory) and `docs/reference/MAP_REFERENCE_MATRIX.md` (2014 camera mapping).

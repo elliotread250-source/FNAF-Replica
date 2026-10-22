@@ -1,23 +1,123 @@
-import type { Box, Collider, Level } from '../../world/types';
+import type { Box, Collider, FrDoorDef, Level } from '../../world/types';
 
 const CELL = 4;
 const cellKey = (cx: number, cz: number) => cx * 4096 + cz;
 
+/** How far a swing door's blade turns when fully open. The renderer poses the mesh with the same number. */
+export const DOOR_SWING_MAX = (Math.PI / 2) * 0.94;
+/** Collision thickness of a swung blade, and the longest box used to approximate it. */
+const BLADE_T = 0.08;
+const BLADE_LINK = 0.2;
+/** A shutter's slab stops this far short of its full height when raised. */
+export const SHUTTER_HEADROOM = 0.15;
+
+/** One door leaf: the hinge point on the ground plane and the leaf's vector when open by `open`. */
+export interface DoorLeaf {
+  hx: number;
+  hz: number;
+  vx: number;
+  vz: number;
+  /** Y rotation (radians) the renderer should apply to this leaf's pivot. */
+  angle: number;
+}
+
+/**
+ * Where each leaf of a hinged door sits for an openness 0..1. Shared by collision and rendering so the blade
+ * you see is the blade you bump into. Rotation follows three.js: (x, z) -> (x cos + z sin, -x sin + z cos).
+ */
+export function doorLeaves(d: FrDoorDef, open: number): DoorLeaf[] {
+  const alongX = d.axis === 'z';
+  const w = d.to - d.from;
+  const rot = (x: number, z: number, a: number): [number, number] => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
+  if (d.kind === 'double') {
+    const mid = (d.from + d.to) / 2;
+    return [-1, 1].map((side) => {
+      const edge = mid + side * (w / 2);
+      const angle = (alongX ? -1 : 1) * (side === -1 ? 1 : -1) * d.swing * open * DOOR_SWING_MAX;
+      const len = -side * (w / 2);
+      const [vx, vz] = rot(alongX ? len : 0, alongX ? 0 : len, angle);
+      return { hx: alongX ? edge : d.line, hz: alongX ? d.line : edge, vx, vz, angle };
+    });
+  }
+  const s = d.hinge === 'from' ? 1 : -1;
+  const hinge = d.hinge === 'from' ? d.from : d.to;
+  const angle = (alongX ? -1 : 1) * s * d.swing * open * DOOR_SWING_MAX;
+  const [vx, vz] = rot(alongX ? s * w : 0, alongX ? 0 : s * w, angle);
+  return [{ hx: alongX ? hinge : d.line, hz: alongX ? d.line : hinge, vx, vz, angle }];
+}
+
+const scratchDoor: Collider[] = [];
+
+const isHinged = (d: FrDoorDef) => d.kind === 'swing' || d.kind === 'exit' || d.kind === 'glass' || d.kind === 'double';
+
+/**
+ * The boxes a door occupies at openness `open`. Closed doors are one slab across the opening. Shutters and
+ * rollers keep their footprint but their underside rises with the slab, so you can duck under a half-open
+ * shutter but not walk through one. Hinged doors become a chain of small boxes along each swung blade.
+ * Curtains are cloth: solid until mostly drawn, then nothing.
+ */
+export function doorBoxes(d: FrDoorDef, closed: Collider, open: number, out: Collider[]): Collider[] {
+  out.length = 0;
+  if (open <= 0.02) {
+    out.push(closed);
+    return out;
+  }
+  if (d.kind === 'shutter' || d.kind === 'roller') {
+    out.push({ ...closed, y1: d.floorY + open * (d.height - SHUTTER_HEADROOM) });
+    return out;
+  }
+  if (!isHinged(d)) {
+    if (open < 0.7) out.push(closed);
+    return out;
+  }
+  for (const l of doorLeaves(d, open)) {
+    const len = Math.hypot(l.vx, l.vz);
+    const n = Math.max(1, Math.ceil(len / BLADE_LINK));
+    const hx = Math.abs(l.vx / n) / 2 + BLADE_T / 2;
+    const hz = Math.abs(l.vz / n) / 2 + BLADE_T / 2;
+    for (let k = 0; k < n; k++) {
+      const cx = l.hx + (l.vx * (k + 0.5)) / n;
+      const cz = l.hz + (l.vz * (k + 0.5)) / n;
+      out.push({ x1: cx - hx, x2: cx + hx, z1: cz - hz, z2: cz + hz, y1: closed.y1, y2: closed.y2, door: d.id, kind: 'door' });
+    }
+  }
+  return out;
+}
+
+/** Everything a door can ever occupy on the ground plane, for the spatial hash. */
+function doorSweep(d: FrDoorDef, closed: Box): Box {
+  if (!isHinged(d)) return closed;
+  const w = d.to - d.from + BLADE_T;
+  const alongX = d.axis === 'z';
+  return alongX
+    ? { x1: d.from - BLADE_T, x2: d.to + BLADE_T, z1: d.line - w, z2: d.line + w, y1: closed.y1, y2: closed.y2 }
+    : { z1: d.from - BLADE_T, z2: d.to + BLADE_T, x1: d.line - w, x2: d.line + w, y1: closed.y1, y2: closed.y2 };
+}
+
 /** Spatial hash over the level's collision boxes, plus live door state. Shared by the server and the client. */
 export class CollisionWorld {
   readonly colliders: Collider[];
-  /** 0 = closed, 1 = open, per door id. Doors count as open for collision at 0.7 and above. */
+  /**
+   * 0 = closed, 1 = open, per door id. Writers may set it directly; the posed collision shape of each door
+   * follows it (see `doorBoxes`). AI and nav treat a door as passable from 0.7.
+   */
   readonly doorOpen: Float32Array;
+  private readonly doorDefs: FrDoorDef[];
+  /** Posed boxes per door and the openness they were posed for. */
+  private posed: { open: number; closed: Collider; boxes: Collider[] }[];
   private grid = new Map<number, number[]>();
   private stamp: Int32Array;
   private stampN = 0;
 
   constructor(level: Pick<Level, 'colliders' | 'doors'>) {
     this.colliders = level.colliders;
+    this.doorDefs = level.doors;
     this.doorOpen = new Float32Array(level.doors.length);
     level.doors.forEach((d, i) => (this.doorOpen[i] = d.startsOpen ? 1 : 0));
+    this.posed = level.doors.map((d) => ({ open: NaN, closed: level.colliders.find((c) => c.door === d.id) as Collider, boxes: [] }));
     this.stamp = new Int32Array(this.colliders.length);
-    this.colliders.forEach((c, i) => {
+    this.colliders.forEach((c0, i) => {
+      const c = c0.door === undefined ? c0 : doorSweep(this.doorDefs[c0.door], c0);
       const x1 = Math.floor(c.x1 / CELL);
       const x2 = Math.floor(c.x2 / CELL);
       const z1 = Math.floor(c.z1 / CELL);
@@ -33,11 +133,38 @@ export class CollisionWorld {
     });
   }
 
-  isActive(c: Collider): boolean {
-    return c.door === undefined || this.doorOpen[c.door] < 0.7;
+  /**
+   * Would door `id`, posed at openness `open`, overlap a body (vertical cylinder at feet x, y, z)? Used to stop a
+   * hinged door mid-swing instead of shoving whoever is standing in its path.
+   */
+  doorWouldHit(id: number, open: number, x: number, y: number, z: number, r: number, h: number): boolean {
+    const p = this.posed[id];
+    doorBoxes(this.doorDefs[id], p.closed, open, scratchDoor);
+    for (const b of scratchDoor) {
+      if (b.y2 <= y || b.y1 >= y + h) continue;
+      if (circleBox(x, z, r, b) > 0) return true;
+    }
+    return false;
   }
 
-  /** Boxes whose footprint touches the rectangle. The returned array is reused between calls. */
+  /** Colliders returned by `query` are already posed for their door's state, so every one of them is live. */
+  isActive(c: Collider): boolean {
+    void c;
+    return true;
+  }
+
+  /** The boxes door `id` occupies right now. */
+  doorShape(id: number): Collider[] {
+    const p = this.posed[id];
+    const open = this.doorOpen[id];
+    if (p.open !== open) {
+      doorBoxes(this.doorDefs[id], p.closed, open, p.boxes);
+      p.open = open;
+    }
+    return p.boxes;
+  }
+
+  /** Boxes whose footprint touches the rectangle, with doors posed. The returned array is reused between calls. */
   query(x1: number, z1: number, x2: number, z2: number, out: Collider[] = []): Collider[] {
     out.length = 0;
     this.stampN++;
@@ -49,6 +176,10 @@ export class CollisionWorld {
           if (this.stamp[i] === this.stampN) continue;
           this.stamp[i] = this.stampN;
           const c = this.colliders[i];
+          if (c.door !== undefined) {
+            for (const b of this.doorShape(c.door)) if (!(b.x2 < x1 || b.x1 > x2 || b.z2 < z1 || b.z1 > z2)) out.push(b);
+            continue;
+          }
           if (c.x2 < x1 || c.x1 > x2 || c.z2 < z1 || c.z1 > z2) continue;
           out.push(c);
         }
@@ -98,8 +229,20 @@ export class CollisionWorld {
     return best;
   }
 
-  /** Ray against all active boxes, optionally ignoring glass. Returns the hit distance or Infinity. */
-  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, opts: { glass?: boolean } = {}): number {
+  /**
+   * Ray against all active boxes. `glass: false` ignores glass, `only` limits the kinds that count, `skipDoor`
+   * ignores one door (the one being reached for). Returns the hit distance or Infinity.
+   */
+  raycast(
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    maxT: number,
+    opts: { glass?: boolean; only?: Collider['kind'][]; skipDoor?: number; skipAround?: [number, number, number] } = {},
+  ): number {
     const ex = ox + dx * maxT;
     const ez = oz + dz * maxT;
     const near = this.query(Math.min(ox, ex) - 0.05, Math.min(oz, ez) - 0.05, Math.max(ox, ex) + 0.05, Math.max(oz, ez) + 0.05, []);
@@ -107,6 +250,12 @@ export class CollisionWorld {
     for (const c of near) {
       if (!this.isActive(c)) continue;
       if (c.kind === 'glass' && opts.glass === false) continue;
+      if (opts.only && !opts.only.includes(c.kind)) continue;
+      if (opts.skipDoor !== undefined && c.door === opts.skipDoor) continue;
+      if (opts.skipAround && c.kind === 'prop') {
+        const [px, py, pz] = opts.skipAround;
+        if (px > c.x1 - 0.05 && px < c.x2 + 0.05 && py > c.y1 - 0.05 && py < c.y2 + 0.05 && pz > c.z1 - 0.05 && pz < c.z2 + 0.05) continue;
+      }
       const t = rayBox(ox, oy, oz, dx, dy, dz, c);
       if (t >= 0 && t < best && t <= maxT) best = t;
     }
@@ -131,6 +280,25 @@ export class CollisionWorld {
       if (out.walls + out.doors >= 3) break;
     }
     return out;
+  }
+
+  /**
+   * Can a hand at the eye reach a point? Walls, doors and glass may not cross the line at all. Furniture that
+   * holds the point (a shelf with a fuse on a tier, the desk under the phone) doesn't count; other furniture may
+   * only sit within the last 0.45 m. The client prompt calls this too, so what highlights is what the server
+   * accepts.
+   */
+  canReach(ex: number, ey: number, ez: number, tx: number, ty: number, tz: number, skipDoor?: number): boolean {
+    const dx = tx - ex;
+    const dy = ty - ey;
+    const dz = tz - ez;
+    const d = Math.hypot(dx, dy, dz);
+    if (d < 1e-3) return true;
+    const ux = dx / d;
+    const uy = dy / d;
+    const uz = dz / d;
+    if (this.raycast(ex, ey, ez, ux, uy, uz, d, { only: ['wall', 'door', 'glass'], skipDoor }) < d - 0.06) return false;
+    return this.raycast(ex, ey, ez, ux, uy, uz, d, { skipDoor, skipAround: [tx, ty, tz] }) >= d - 0.45;
   }
 
   /** Line of sight between two points, ignoring glass if asked. */

@@ -4,6 +4,7 @@ import { checkerFloor, confettiWall, ceilingTiles, metalTex, posterTex, stripesT
 import { plain, glow, textured, dirty } from '../materials';
 import { volumetricCone, dustMotes, driftMotes, Flicker, SparkSystem } from '../fx/effects';
 import { buildCharacter, type CharacterRig } from '../characters/build';
+import { buildOfficeKit } from '../world/officeKit';
 import { store } from '../../store';
 
 export interface OfficeDoor {
@@ -149,63 +150,32 @@ export function buildOffice(spec: OfficeSpec): OfficeScene {
     }
   }
 
-  // Desk.
+  // Desk set: the same desk, CRTs, fan, phone, cups and papers as the free-roam office (OFFICE_KIT), so the two
+  // offices share their objects and materials. The kit is authored in world space around the free-roam desk at
+  // (25, 49.3); shift it so that desk sits at this scene's desk origin.
   const deskMat = new THREE.MeshStandardMaterial({ map: woodTex(8, '#4a3020'), roughness: 0.7 });
   const desk = new THREE.Group();
   desk.position.set(0, 0, -0.55);
   room.add(desk);
-  mesh(new THREE.BoxGeometry(2.8, 0.06, 0.9), deskMat, [0, 0.78, 0], desk);
-  for (const x of [-1.3, 1.3]) mesh(new THREE.BoxGeometry(0.08, 0.78, 0.8), deskMat, [x, 0.39, 0], desk);
-  mesh(new THREE.BoxGeometry(2.6, 0.6, 0.04), deskMat, [0, 0.45, -0.42], desk);
-  // CRT monitor stack.
   const caseM = dirty('#b8b0a0', 0.7);
-  const screens: THREE.Mesh[] = [];
-  for (const [x, y, sc] of [
-    [-0.15, 1.05, 1],
-    [0.45, 1.0, 0.75],
-    [-0.15, 1.5, 0.8],
-  ] as [number, number, number][]) {
-    mesh(new THREE.BoxGeometry(0.5 * sc, 0.42 * sc, 0.45 * sc), caseM, [x, y, -0.15], desk);
-    const scr = mesh(new THREE.PlaneGeometry(0.4 * sc, 0.3 * sc), glow('#0f2a18', 0.6), [x, y + 0.01, -0.15 + 0.226 * sc], desk, false);
-    screens.push(scr);
-  }
+  const kit = buildOfficeKit(['desk', 'crt', 'fan', 'phone', 'cup', 'papers']);
+  kit.root.position.set(-25, 0, -49.3);
+  desk.add(kit.root);
   const monitorLight = new THREE.PointLight('#5ad890', 0.35, 2.5, 2);
-  monitorLight.position.set(0, 1.1, 0.2);
+  monitorLight.position.set(-0.4, 1.1, 0.2);
   desk.add(monitorLight);
-  // Fan.
+  // Session code sets fan.userData.speed (1 running, 0 on a blackout); the kit eases the blades to match.
   const fan = new THREE.Group();
-  fan.position.set(-0.9, 0.81, 0.05);
-  desk.add(fan);
-  mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.04, 16), plain('#2a2a2a', 0.5, 0.6), [0, 0.02, 0], fan);
-  mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 8), plain('#3a3a3a', 0.4, 0.8), [0, 0.17, 0], fan);
-  const head = new THREE.Group();
-  head.position.set(0, 0.34, 0);
-  head.rotation.y = 0.5;
-  fan.add(head);
-  const blades = new THREE.Group();
-  head.add(blades);
-  for (let i = 0; i < 3; i++) {
-    const b = mesh(new THREE.BoxGeometry(0.08, 0.2, 0.005), plain('#5a5a5a', 0.4, 0.7), [0, 0.1, 0.05], blades);
-    b.geometry.translate(0, 0, 0);
-    const pivot = new THREE.Group();
-    pivot.rotation.z = (i * Math.PI * 2) / 3;
-    pivot.add(b);
-    blades.add(pivot);
-  }
-  const cage = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.008, 4, 24), plain('#6a6a6a', 0.4, 0.8));
-  cage.position.z = 0.06;
-  head.add(cage);
-  const blur = new THREE.Mesh(new THREE.CircleGeometry(0.2, 24), new THREE.MeshBasicMaterial({ color: '#6a6a6a', transparent: true, opacity: 0.25 }));
-  blur.position.z = 0.052;
-  head.add(blur);
-  fan.userData.blades = blades;
-  fan.userData.blur = blur;
-  // Cups, paper, phone.
-  mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.12, 12), plain('#c41e1e', 0.5), [0.95, 0.87, 0.1], desk).userData.cup = true;
-  mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.12, 12), plain('#e8e8e8', 0.5), [1.05, 0.87, -0.05], desk).userData.cup = true;
-  for (let i = 0; i < 4; i++) mesh(new THREE.BoxGeometry(0.21, 0.003, 0.29), plain('#e8e2d0', 0.9), [0.5 + i * 0.03, 0.812 + i * 0.003, 0.25], desk, false).rotation.y = i * 0.3;
-  const phone = mesh(new THREE.BoxGeometry(0.22, 0.07, 0.16), plain('#1a1a1a', 0.4), [-0.55, 0.85, 0.25], desk);
+  fan.userData.speed = 1;
+  // Clicks pick non-recursively, so the phone gets an invisible hit box over the kit's phone model.
+  const phone = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.26), new THREE.MeshBasicMaterial({ visible: false }));
   phone.name = 'phone';
+  if (kit.phone) {
+    kit.phone.updateMatrixWorld(true);
+    phone.position.copy(kit.phone.position).add(kit.root.position);
+    phone.position.y += 0.06;
+  }
+  desk.add(phone);
   // Decor cosmetics.
   if (decor === 'cupcake' || decor === 'golden') {
     const c = buildCharacter('chica').root; // borrow the cupcake from Chica's tray
@@ -451,11 +421,8 @@ export function buildOffice(spec: OfficeSpec): OfficeScene {
       placedThisFrame.add(id);
     },
     update(dt, t) {
-      // Fan.
-      const blades = fan.userData.blades as THREE.Group;
-      const spinning = (fan.userData.speed ?? 1) as number;
-      blades.rotation.z += dt * 40 * spinning;
-      (fan.userData.blur as THREE.Mesh).visible = spinning > 0.5;
+      // Desk set: fan spin-down and CRT glow follow the session's fan speed (power).
+      kit.update(dt, { powered: ((fan.userData.speed ?? 1) as number) > 0.5, doorL: false, doorR: false, lightL: false, lightR: false, monitorUp: false });
       // Doors slide with a little bounce.
       for (const d of doors) {
         const k = Math.min(1, dt / 0.25);
@@ -476,7 +443,6 @@ export function buildOffice(spec: OfficeSpec): OfficeScene {
       bulbPivot.rotation.x = swingA * 0.4;
       for (const fl of flickers) fl.update(dt, t);
       for (const c of candles) c.intensity = 0.3 + Math.random() * 0.2;
-      for (const s of screens) (s.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + Math.sin(t * 50) * 0.03;
       sparks.update(dt);
       for (const [id, rig] of characters) {
         if (!placedThisFrame.has(id)) rig.root.visible = false;

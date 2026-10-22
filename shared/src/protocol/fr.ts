@@ -59,6 +59,8 @@ export interface FrStart {
   band: [number, number];
   plates: number[];
   requiredZones: string[];
+  /** levelChecksum() on the server. A client whose own checksum differs is running a stale bundle. */
+  layout: string;
 }
 
 export interface FrSnapNight {

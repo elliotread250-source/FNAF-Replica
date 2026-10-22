@@ -1,8 +1,11 @@
 import * as THREE from 'three';
-import type { CircuitId, FrDoorDef, LightDef, Level, StyleId, WallRun } from '@fnaf/shared';
+import { doorLeaves, SHUTTER_HEADROOM, type CircuitId, type FrDoorDef, type LightDef, type Level, type StyleId, type WallRun } from '@fnaf/shared';
 import { BatchSet } from './batch';
 import { EXTERIOR, makeStyles, TRIM, type StyleMats } from './materials';
 import { buildProp } from './props';
+import { buildOfficeKit, type OfficeKitRender } from './officeKit';
+import { buildRoomKits } from './roomKits';
+import { mergeStatic } from './merge';
 
 /** Which circuits are live. The game owns this; the renderer only reads it. */
 export interface PowerView {
@@ -33,11 +36,17 @@ export class WorldRender {
   readonly roomGroups = new Map<string, THREE.Group>();
   readonly doors = new Map<number, DoorVisual>();
   readonly fixtures: Fixture[] = [];
+  /** The Security Office's desk, CRTs, fan and wall dressing (shared catalogue: OFFICE_KIT). */
+  readonly officeKit: OfficeKitRender;
   private styles: Record<StyleId, StyleMats>;
   private pool: { light: THREE.PointLight; fixture: Fixture | null; level: number }[] = [];
   private cellRoom = new Map<string, string>();
   private glowMats = new Map<string, THREE.MeshStandardMaterial[]>();
   readonly ambient = new THREE.HemisphereLight('#8090b0', '#201810', 0.03);
+  /** Photosensitivity mode: buzzing and sparking fixtures hold steady instead of flickering. */
+  calm = false;
+  /** Opening graph for culling: each edge knows its door (or -1 for an archway/doorless opening). */
+  private edges = new Map<string, { to: string; door: number }[]>();
   private ambientTarget = 0.03;
   private time = 0;
 
@@ -120,17 +129,33 @@ export class WorldRender {
       return g;
     };
 
+    // Props and set dressing are static: build them per room, then bake each room into one mesh per material.
+    const dressing = new Map<string, THREE.Group>();
+    const dressFor = (room: string) => {
+      let g = dressing.get(room);
+      if (!g) {
+        g = new THREE.Group();
+        g.name = `dress:${room}`;
+        dressing.set(room, g);
+      }
+      return g;
+    };
     for (const p of level.props) {
       const b = buildProp(p);
-      groupFor(p.room).add(b.object);
+      dressFor(p.room).add(b.object);
       if (b.glows.length) {
         const list = this.glowMats.get(p.room) ?? [];
         list.push(...b.glows);
         this.glowMats.set(p.room, list);
       }
     }
+    this.officeKit = buildOfficeKit();
+    groupFor('office').add(this.officeKit.root);
+    for (const [room, g] of buildRoomKits().byRoom) dressFor(room).add(g);
+    for (const [room, g] of dressing) groupFor(room).add(mergeStatic(g));
     this.buildWindows();
     for (const d of level.doors) this.buildDoor(d, groupFor(this.roomOfDoor(d)));
+    this.buildEdges();
     this.buildFixtures(groupFor);
     this.buildDecor(groupFor);
 
@@ -148,6 +173,27 @@ export class WorldRender {
       this.root.add(l);
       this.pool.push({ light: l, fixture: null, level: 0 });
     }
+  }
+
+  private buildEdges(): void {
+    const link = (a: string, b: string, door: number) => {
+      for (const [x, y] of [[a, b], [b, a]]) {
+        const list = this.edges.get(x) ?? [];
+        if (!list.some((e) => e.to === y && e.door === door)) list.push({ to: y, door });
+        this.edges.set(x, list);
+      }
+    };
+    for (const o of this.level.openings) {
+      const mid = Math.floor((o.from + o.to) / 2);
+      const at = (off: number) => (o.axis === 'z' ? this.cellRoom.get(`${o.floorY}|${mid},${Math.floor(o.line + off)}`) : this.cellRoom.get(`${o.floorY}|${Math.floor(o.line + off)},${mid}`));
+      const a = at(0.5);
+      const b = at(-0.5);
+      if (!a || !b || a === b) continue;
+      const door = this.level.doors.find((d) => d.axis === o.axis && d.line === o.line && d.from === o.from && d.to === o.to && d.floorY === o.floorY);
+      link(a, b, door ? door.id : -1);
+    }
+    // The stairwell is one shaft split over two floors.
+    for (const [a, b] of Object.entries(this.level.links)) for (const n of b) if (!this.edges.get(a)?.some((e) => e.to === n)) link(a, n, -1);
   }
 
   private roomOfDoor(d: FrDoorDef): string {
@@ -245,18 +291,14 @@ export class WorldRender {
     v.open = open;
     const d = v.def;
     const alongX = d.axis === 'z';
-    const swing = d.swing;
+    // Hinged leaves and shutters are posed with the same numbers the collision uses (doorLeaves, doorBoxes).
     if (d.kind === 'swing' || d.kind === 'exit' || d.kind === 'glass') {
-      const sgn = (alongX ? -1 : 1) * (d.hinge === 'from' ? 1 : -1);
-      v.pivot.rotation.y = sgn * swing * open * (Math.PI / 2) * 0.94;
+      v.pivot.rotation.y = doorLeaves(d, open)[0].angle;
     } else if (d.kind === 'double') {
-      for (const sub of v.slabs) {
-        const side = sub.userData.side as number;
-        const sgn = (alongX ? -1 : 1) * (side === -1 ? 1 : -1);
-        sub.rotation.y = sgn * swing * open * (Math.PI / 2) * 0.94;
-      }
+      const leaves = doorLeaves(d, open);
+      for (const sub of v.slabs) sub.rotation.y = leaves[(sub.userData.side as number) === -1 ? 0 : 1].angle;
     } else if (d.kind === 'shutter' || d.kind === 'roller') {
-      v.slabs[0].position.y = d.height / 2 + open * (d.height - 0.15);
+      v.slabs[0].position.y = d.height / 2 + open * (d.height - SHUTTER_HEADROOM);
     } else {
       // Curtain: slides aside by shrinking.
       v.slabs[0].scale.set(alongX ? Math.max(0.12, 1 - open * 0.88) : 1, 1, alongX ? 1 : Math.max(0.12, 1 - open * 0.88));
@@ -294,7 +336,7 @@ export class WorldRender {
         cord.position.set(l.x, l.y + 0.5, l.z);
         groupFor(l.room).add(cord);
       }
-      this.fixtures.push({ def: l, mesh, mat, base: l.kind === 'emergency' ? 2.2 : l.kind === 'neon' ? 2.4 : 1.7, phase: Math.random() * 100, level: 0 });
+      this.fixtures.push({ def: l, mesh, mat, base: l.kind === 'emergency' ? 2.2 : l.kind === 'neon' ? 2.4 : 1.7, phase: hash01(l.id, 17) * 100, level: 0 });
     }
   }
 
@@ -349,8 +391,10 @@ export class WorldRender {
     for (const f of this.fixtures) {
       const lit = f.def.flicker !== 'dead' && power.lit(f.def.circuit, f.def.kind);
       let target = lit ? 1 : 0;
-      if (lit && f.def.flicker === 'buzz') target = Math.sin(t * 40 + f.phase) > -0.2 ? (Math.random() < 0.04 ? 0.15 : 1) : 0.7;
-      if (lit && f.def.flicker === 'spark') target = (t + f.phase) % 24 < 0.5 ? (Math.random() < 0.5 ? 0 : 1) : 1;
+      // Flicker from a seeded hash of (time step, fixture), never Math.random: the same tube stutters the same
+      // way every night, and the rate stays under 3 Hz-equivalent dips. Photosensitivity mode holds them steady.
+      if (lit && f.def.flicker === 'buzz') target = this.calm ? 0.85 : Math.sin(t * 40 + f.phase) > -0.2 ? (hash01(Math.floor(t * 12), f.def.id) < 0.04 ? 0.15 : 1) : 0.7;
+      if (lit && f.def.flicker === 'spark') target = this.calm ? 1 : (t + f.phase) % 24 < 0.5 ? (hash01(Math.floor(t * 8), f.def.id + 999) < 0.5 ? 0 : 1) : 1;
       f.level += (target - f.level) * Math.min(1, dt * 18);
       f.mat.emissiveIntensity = f.level * f.base;
       if (camRoom && f.def.room === camRoom) litNear = Math.max(litNear, lit ? f.level : 0);
@@ -364,10 +408,18 @@ export class WorldRender {
 
     // Light pool: the nearest lit fixtures get real lights.
     const cands = this.fixtures.filter((f) => f.def.real && f.level > 0.05 && f.def.kind !== 'neon');
+    // Real lights go to the room you're in first, then rooms you can see into, then anything else close. Pure
+    // distance used to hand a slot to a lamp on the far side of a wall, which then lit this room through it.
+    const linked = new Set(camRoom ? (this.edges.get(camRoom) ?? []).map((e) => e.to) : []);
     const near = cands
-      .map((f) => ({ f, d2: (f.def.x - cam.x) ** 2 + (f.def.y - cam.y) ** 2 + (f.def.z - cam.z) ** 2 }))
+      .filter((f) => this.roomGroups.get(f.def.room)?.visible !== false)
+      .map((f) => {
+        const d2 = (f.def.x - cam.x) ** 2 + (f.def.y - cam.y) ** 2 + (f.def.z - cam.z) ** 2;
+        const w = f.def.room === camRoom ? 1 : linked.has(f.def.room) ? 3 : 10;
+        return { f, d2, score: d2 * w };
+      })
       .filter((c) => c.d2 < 26 * 26)
-      .sort((a, b) => a.d2 - b.d2)
+      .sort((a, b) => a.score - b.score)
       .slice(0, this.pool.length)
       .map((c) => c.f);
     const keep = new Set(near);
@@ -394,19 +446,25 @@ export class WorldRender {
     }
   }
 
-  /** Show only the rooms near the camera (graph distance <= hops), plus any that are forced on. */
-  cull(camRoom: string | null, hops = 2, always: string[] = []): void {
+  /**
+   * Show the rooms you could see from `camRoom`: walk the opening graph up to `hops` openings deep, but stop
+   * at a closed door (the room just behind it stays drawn so the door itself never vanishes). Open doors and
+   * archways let the walk continue, so a long sightline through an open door isn't cut off at two hops.
+   */
+  cull(camRoom: string | null, hops = 2, always: string[] = [], doorOpen?: ArrayLike<number>): void {
     const show = new Set<string>(['_ext', ...always]);
     if (camRoom) {
       let frontier = [camRoom];
       show.add(camRoom);
       for (let i = 0; i < hops; i++) {
         const next: string[] = [];
-        for (const r of frontier) for (const n of this.level.links[r] ?? []) {
-          if (show.has(n)) continue;
-          show.add(n);
-          next.push(n);
-        }
+        for (const r of frontier)
+          for (const e of this.edges.get(r) ?? []) {
+            if (show.has(e.to)) continue;
+            show.add(e.to);
+            const closed = e.door >= 0 && doorOpen !== undefined && doorOpen[e.door] < 0.05;
+            if (!closed) next.push(e.to);
+          }
         frontier = next;
       }
     } else {
@@ -414,4 +472,10 @@ export class WorldRender {
     }
     for (const [id, g] of this.roomGroups) g.visible = show.has(id);
   }
+}
+
+/** Deterministic 0..1 hash of two integers (for seeded flicker). */
+function hash01(a: number, b: number): number {
+  const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return x - Math.floor(x);
 }

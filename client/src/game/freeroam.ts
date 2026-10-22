@@ -187,6 +187,13 @@ export class FreeRoam {
   private lastCam: string | null = null;
   private camSwitchT = 0;
   private cornerLights: THREE.SpotLight[] = [];
+  private lastDoorSum = -1;
+  /** Last authoritative position from the server (net play), for the collider overlay. */
+  private serverPos: { x: number; y: number; z: number } | null = null;
+  private overlay: THREE.LineSegments | null = null;
+  private overlayT = 0;
+  private frameTimes = new Float32Array(240);
+  private frameN = 0;
   private subtitleQueue: string[] = [];
   private subtitleT = 0;
   private ringT = 0;
@@ -220,10 +227,33 @@ export class FreeRoam {
     hideUi: () => {
       this.ui.pause.style.display = 'none';
     },
+    /** Toggle the F9 collider overlay from tests. */
+    overlay: (on: boolean) => {
+      this.debugOn = on;
+      this.ui.debug.style.display = on ? 'block' : 'none';
+    },
     act: (a: FrAct) => (this.actQueued = a),
     clip: (open: boolean) => (this.clipboardOpen = open),
     remotes: () => [...this.remotes.entries()].filter(([, v]) => v.rig.root.visible).map(([id]) => id),
     powerState: () => ({ main: this.sim.power.main, circuits: [...this.sim.power.circuits] }),
+    /** Frame-time and renderer counters over the last 240 frames (dev/test only, like the rest of debug). */
+    perf: () => {
+      const n = Math.min(this.frameN, this.frameTimes.length);
+      const ts = Array.from(this.frameTimes.slice(0, n)).sort((a, b) => a - b);
+      const avg = ts.reduce((a, b) => a + b, 0) / Math.max(1, n);
+      const info = getRenderer().gl.info;
+      return {
+        frames: n,
+        fps: avg > 0 ? 1 / avg : 0,
+        avgMs: avg * 1000,
+        p95Ms: (ts[Math.floor(n * 0.95)] ?? 0) * 1000,
+        calls: info.render.calls,
+        triangles: info.render.triangles,
+        geometries: info.memory.geometries,
+        textures: info.memory.textures,
+        colliders: this.sim.level.colliders.length,
+      };
+    },
     agent: (id: string, x: number, z: number, y = 0, yaw = 0) => {
       const a = this.sim.agents.find((q) => q.id === id);
       if (a) Object.assign(a, { x, z, y, yaw });
@@ -253,6 +283,7 @@ export class FreeRoam {
     };
     const r = getRenderer();
     this.render = new WorldRender(sim.level, r.quality);
+    this.render.calm = store.settings.photosensitive;
     this.scene.add(this.render.root);
     this.nightVis = new NightVisuals(this.sim);
     this.scene.add(this.nightVis.root);
@@ -284,6 +315,8 @@ export class FreeRoam {
       .then(() => {
         audio.startLoop('fr_drone', 'drone');
         audio.startLoop('fr_hum', 'light_hum');
+        audio.startLoop('fr_fan', 'fan');
+        audio.loopGain('fr_fan', 0);
         audio.loopGain('fr_hum', 0);
       })
       .catch(() => {});
@@ -465,6 +498,10 @@ export class FreeRoam {
   frame(dt: number, t: number): void {
     this.time = t;
     const r = getRenderer();
+    // Per-frame stats for debug.perf(): count every pass of this frame (shadows, feeds, post) together.
+    r.gl.info.autoReset = false;
+    r.gl.info.reset();
+    this.frameTimes[this.frameN++ % this.frameTimes.length] = dt;
     const u = r.post.uniforms;
     if (this.scareT > 0) {
       const s = this.jumpscare.update(dt);
@@ -628,7 +665,10 @@ export class FreeRoam {
     for (const h of this.history) this.predict(h.cmd, sim.dt, false);
     // Small corrections are smoothed by shifting the interpolation origin; big ones snap.
     const err = Math.hypot(me.body.x - before.x, me.body.z - before.z);
-    if (err > 0.01 && err < 1.5) {
+    this.serverPos = { x: m.body.x, y: m.body.y, z: m.body.z };
+    // Never blend across a wall: if anything solid lies between the predicted and corrected spots, snap.
+    const across = !sim.world.clearLine(before.x, before.y + 0.9, before.z, me.body.x, me.body.y + 0.9, me.body.z, true);
+    if (err > 0.01 && err < 1.5 && !across) {
       this.prev.x += me.body.x - before.x;
       this.prev.z += me.body.z - before.z;
       this.prev.y += me.body.y - before.y;
@@ -1040,7 +1080,7 @@ export class FreeRoam {
     fc.rotation.order = 'YXZ';
     fc.rotation.set(cam.pitch, cam.yaw + Math.sin(this.time * 0.25) * 0.12, 0);
     fc.updateMatrixWorld(true);
-    this.render.cull(cam.room, 1);
+    this.render.cull(cam.room, 1, [], this.sim.world.doorOpen);
     this.syncRigVisibility();
     this.flash.visible = false;
     this.beam.visible = false;
@@ -1062,7 +1102,7 @@ export class FreeRoam {
     ir.target.position.copy(was.tgt);
     ir.color.copy(was.c);
     (this.scene.fog as THREE.FogExp2).density = savedFog;
-    this.render.cull(this.lastRoom, 2);
+    this.render.cull(this.lastRoom, 3, [], this.sim.world.doorOpen);
     this.syncRigVisibility();
     const audioOnly = Boolean(cam.audioOnly);
     r.renderCrt(this.feedTarget.texture, {
@@ -1279,20 +1319,37 @@ export class FreeRoam {
     const cam = this.camera.position;
     const b = this.me.body;
     const room = this.render.roomAt(b.x, b.y + 0.5, b.z);
-    if (room !== this.lastRoom) {
+    // Re-cull on room changes and whenever a door changes state (a door opening reveals what's behind it).
+    let doorSum = 0;
+    for (const v of this.sim.world.doorOpen) doorSum += v < 0.05 ? 0 : 1;
+    if (room !== this.lastRoom || doorSum !== this.lastDoorSum) {
       this.lastRoom = room;
-      this.render.cull(room, 2);
+      this.lastDoorSum = doorSum;
+      this.render.cull(room, 3, [], this.sim.world.doorOpen);
     }
     this.render.update(dt, this.power, cam, room);
     const ol = this.sim.office;
     const opow = this.sim.circuitOn('office');
     this.cornerLights[0].intensity = opow && ol.lights.L ? 40 : 0;
     this.cornerLights[1].intensity = opow && ol.lights.R ? 40 : 0;
+    const kit = this.render.officeKit;
+    const dOpen = this.sim.world.doorOpen;
+    kit.update(dt, {
+      powered: opow,
+      doorL: ol.doorL >= 0 && dOpen[ol.doorL] < 0.5,
+      doorR: ol.doorR >= 0 && dOpen[ol.doorR] < 0.5,
+      lightL: ol.lights.L,
+      lightR: ol.lights.R,
+      monitorUp: ol.monitorUp,
+    });
     this.syncRigVisibility();
     const sc = this.scene.fog as THREE.FogExp2;
     const lit = this.render.ambient.intensity > 0.2;
     if (audio.ready) {
       audio.loopGain('fr_hum', lit ? 0.5 : 0, 0.6);
+      // The office fan: loud at the desk, gone a room away, winding down with the power.
+      const fd = this.camera.position.distanceTo(kit.fanPos);
+      audio.loopGain('fr_fan', kit.fanSpeed() * Math.max(0, 1 - fd / 7) * 0.35, 0.3);
       audio.loopGain('fr_drone', lit ? 0.15 : 0.5, 0.8);
     }
     sc.density += ((lit ? 0.008 : 0.028) - sc.density) * Math.min(1, dt * 2);
@@ -1303,6 +1360,72 @@ export class FreeRoam {
   }
 
   // ---- Interaction -------------------------------------------------------------------------------
+
+  /**
+   * F9 developer overlay (local or test builds only): wireframe colliders within 10 m, doors in their posed
+   * shape (yellow), glass (cyan), props (orange), the body cylinder at the feet and head (green), the last
+   * server position (red), and the interaction ray to the current target (white).
+   */
+  private updateOverlay(dt: number): void {
+    if (!this.debugOn) {
+      if (this.overlay) this.overlay.visible = false;
+      return;
+    }
+    this.overlayT -= dt;
+    if (this.overlay && this.overlayT > 0) return;
+    this.overlayT = 0.2;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const c = new THREE.Color();
+    const seg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, hex: string) => {
+      c.set(hex);
+      pos.push(ax, ay, az, bx, by, bz);
+      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    };
+    const boxLines = (b: { x1: number; x2: number; y1: number; y2: number; z1: number; z2: number }, hex: string) => {
+      const xs = [b.x1, b.x2];
+      const ys = [b.y1, b.y2];
+      const zs = [b.z1, b.z2];
+      for (const y of ys) for (const z of zs) seg(b.x1, y, z, b.x2, y, z, hex);
+      for (const x of xs) for (const z of zs) seg(x, b.y1, z, x, b.y2, z, hex);
+      for (const x of xs) for (const y of ys) seg(x, y, b.z1, x, y, b.z2, hex);
+    };
+    const b = this.me.body;
+    const R = 10;
+    for (const k of this.sim.world.query(b.x - R, b.z - R, b.x + R, b.z + R, [])) {
+      if (k.kind === 'floor' || k.kind === 'ceiling') continue;
+      if (Math.abs((k.y1 + k.y2) / 2 - b.y) > 6) continue;
+      boxLines(k, k.kind === 'door' ? '#ffd21a' : k.kind === 'glass' ? '#40e0ff' : k.kind === 'prop' || k.kind === 'step' ? '#ff8a30' : '#8a8aff');
+    }
+    const ring = (x: number, y: number, z: number, r: number, hex: string) => {
+      for (let i = 0; i < 16; i++) {
+        const a0 = (i / 16) * Math.PI * 2;
+        const a1 = ((i + 1) / 16) * Math.PI * 2;
+        seg(x + Math.cos(a0) * r, y, z + Math.sin(a0) * r, x + Math.cos(a1) * r, y, z + Math.sin(a1) * r, hex);
+      }
+    };
+    ring(b.x, b.y + 0.02, b.z, FR.player.RADIUS, '#40ff60');
+    ring(b.x, b.y + b.height, b.z, FR.player.RADIUS, '#40ff60');
+    if (this.serverPos) {
+      ring(this.serverPos.x, this.serverPos.y + 0.04, this.serverPos.z, FR.player.RADIUS, '#ff3030');
+      seg(this.serverPos.x, this.serverPos.y, this.serverPos.z, this.serverPos.x, this.serverPos.y + 1.8, this.serverPos.z, '#ff3030');
+    }
+    const t = this.target;
+    if (t && t.kind === 'item') seg(this.camera.position.x, this.camera.position.y, this.camera.position.z, t.item.x, t.item.y, t.item.z, '#ffffff');
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    if (!this.overlay) {
+      this.overlay = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true, opacity: 0.85 }));
+      this.overlay.renderOrder = 999;
+      this.overlay.frustumCulled = false;
+      this.scene.add(this.overlay);
+    } else {
+      this.overlay.geometry.dispose();
+      this.overlay.geometry = geo;
+    }
+    this.overlay.visible = true;
+  }
 
   private findTarget(): Target {
     if (this.me.hidden || this.me.downed || this.me.ghost) return null;
@@ -1319,10 +1442,8 @@ export class FreeRoam {
       if (d > reach + extra || d < 1e-3) return;
       const dot = (dx * dir.x + dy * dir.y + dz * dir.z) / d;
       if (dot < bestScore) return;
-      if (needLos) {
-        const hit = this.sim.world.raycast(cam.x, cam.y, cam.z, dx / d, dy / d, dz / d, d);
-        if (hit < d - 0.45) return;
-      }
+      // Same rule the server applies, so the prompt only shows for things the server will accept.
+      if (needLos && !this.sim.world.canReach(cam.x, cam.y, cam.z, x, y, z)) return;
       best = make();
       bestScore = dot;
     };
@@ -1477,6 +1598,7 @@ export class FreeRoam {
     this.ui.ring.style.display = ringPct > 0.01 ? 'block' : 'none';
     this.ui.ring.style.background = `conic-gradient(rgba(240,234,216,0.85) ${ringPct * 360}deg, rgba(240,234,216,0.12) 0deg)`;
     if (this.mapOpen) this.drawMap();
+    this.updateOverlay(dt);
     if (this.debugOn) {
       const lines = this.sim.agents.map((a) => {
         const d = Object.entries(a.detect)

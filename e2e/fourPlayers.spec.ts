@@ -1,9 +1,16 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 const STATIONS = ['west', 'east', 'south', 'control'];
 
+// Four live WebGL clients per test: close them afterwards, or they keep rendering and starve the next test.
+const opened: BrowserContext[] = [];
+test.afterEach(async () => {
+  await Promise.all(opened.splice(0).map((c) => c.close().catch(() => {})));
+});
+
 async function signUp(browser: Browser, name: string): Promise<Page> {
   const ctx = await browser.newContext();
+  opened.push(ctx);
   const page = await ctx.newPage();
   await page.goto('/?perf=low');
   await page.getByRole('button', { name: 'Continue' }).click();
@@ -58,10 +65,13 @@ test('four guards survive a FAST_NIGHT Night 1 together', async ({ browser }, in
     pages.map(async (p, i) => {
       await expect(p.locator('.hud-power')).toContainText('Power left');
       const cam = p.locator('[data-cam=dining]');
+      // Space toggles the tablet, so a retry that fires before the camera panel has drawn would put the tablet
+      // back down. With four software-rendered clients on one CPU the panel can take seconds to appear: give each
+      // press that long before trying again (a press can still be dropped while the night is starting up).
       await expect(async () => {
         if (!(await cam.isVisible())) await p.keyboard.press('Space');
-        await expect(cam).toBeVisible({ timeout: 1500 });
-      }).toPass({ timeout: 12_000 });
+        await expect(cam).toBeVisible({ timeout: 6000 });
+      }).toPass({ timeout: 30_000 });
       await cam.click({ timeout: 8000 });
       await p.keyboard.press('Space');
       if (i < 3) {

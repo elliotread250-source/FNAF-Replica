@@ -34,6 +34,8 @@ export interface Body {
   wade: number;
   /** In a vent or other low space: stance is forced to crawl. */
   forcedCrawl: boolean;
+  /** Last grounded spot where the body fitted, for recovery from bad teleports or corrections. */
+  safe: { x: number; y: number; z: number };
 }
 
 export interface FrInput {
@@ -81,6 +83,7 @@ export function newBody(x: number, z: number, y = 0, yaw = 0): Body {
     carrying: false,
     wade: 0,
     forcedCrawl: false,
+    safe: { x, y, z },
   };
 }
 
@@ -217,10 +220,21 @@ export function stepBody(b: Body, inp: FrInput, dt: number, world: CollisionWorl
       if (fall > 4.5) scratch.push({ type: 'land', radius: N.LAND });
     } else b.y = ny;
   }
-  // Fell out of the world (shouldn't happen): put the body back on the nearest floor.
-  if (b.y < -30) {
-    b.y = 0;
-    b.vy = 0;
+  // Fell out of the world, or left inside something solid by a teleport or a large correction: go back to the
+  // last spot where the body stood and fitted. Otherwise remember this one.
+  const stuck = world.blocked(b.x, b.y, b.z, P.RADIUS * 0.9, b.height, P.STEP_HEIGHT);
+  if (b.y < -30 || stuck) {
+    if (!world.blocked(b.safe.x, b.safe.y, b.safe.z, P.RADIUS * 0.9, b.height, P.STEP_HEIGHT)) {
+      b.x = b.safe.x;
+      b.y = b.safe.y;
+      b.z = b.safe.z;
+      b.vy = 0;
+      b.grounded = true;
+    }
+  } else if (b.grounded) {
+    b.safe.x = b.x;
+    b.safe.y = b.y;
+    b.safe.z = b.z;
   }
 
   // --- Footsteps ---
@@ -273,8 +287,13 @@ function tryVault(b: Body, world: CollisionWorld, dx: number, dz: number): boole
     if (c.y2 > top) top = c.y2;
   }
   if (top === -Infinity || top - b.y > P.VAULT_MAX + 1e-6) return false;
-  // Landing spot: first free ground beyond the obstacle, within 2.4 m.
+  // Landing spot: first free ground beyond the obstacle, within 2.4 m. The body passes over the obstacle's
+  // top on the way, so anything taller than that on the line (a wall behind a low table) ends the search:
+  // vaulting must never carry you through a wall into the next room.
+  const clear = (t: number) => !world.blocked(b.x + ux * t, top, b.z + uz * t, P.RADIUS * 0.6, P.HEIGHT_CROUCH, 0.02);
+  for (let s = 0.1; s < probe + 0.25; s += 0.1) if (!clear(s)) return false;
   for (let t = probe + 0.25; t <= 2.4; t += 0.2) {
+    if (!clear(t - 0.1) || !clear(t)) return false;
     const lx = b.x + ux * t;
     const lz = b.z + uz * t;
     if (world.blocked(lx, b.y, lz, P.RADIUS, P.HEIGHT_STAND, P.STEP_HEIGHT)) continue;

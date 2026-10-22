@@ -111,6 +111,115 @@ function arcadeScreenTex(kind: number): THREE.CanvasTexture {
   }) as unknown as THREE.CanvasTexture;
 }
 
+/** Draped dust sheet over a slumped figure: a lathe profile with fold noise, inside a w x d x h box. */
+function sheetFigure(g: THREE.Group, w: number, h: number, d: number): void {
+  const r = Math.min(w, d) / 2 - 0.02;
+  const prof: THREE.Vector2[] = [];
+  const shape = (t: number) => {
+    // Hem flares at the floor, narrows at the waist, shoulders, then a head bump.
+    if (t < 0.15) return r * (1 - t * 0.6);
+    if (t < 0.55) return r * (0.91 - (t - 0.15) * 0.5);
+    if (t < 0.72) return r * (0.71 + Math.sin(((t - 0.55) / 0.17) * Math.PI) * 0.12);
+    if (t < 0.78) return r * 0.42;
+    return r * 0.48 * Math.sqrt(Math.max(0, 1 - ((t - 0.78) / 0.22) ** 2));
+  };
+  for (let i = 0; i <= 24; i++) prof.push(new THREE.Vector2(Math.max(0.001, shape(i / 24)), (i / 24) * h));
+  const geo = new THREE.LatheGeometry(prof, 28);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const y = pos.getY(i);
+    const a = Math.atan2(z, x);
+    const k = 1 + Math.sin(a * 7 + y * 3) * 0.05 * (1 - y / h) + Math.sin(a * 3) * 0.03;
+    pos.setX(i, x * k);
+    pos.setZ(i, z * k);
+  }
+  geo.computeVertexNormals();
+  add(g, geo, new THREE.MeshStandardMaterial({ color: '#c8c2b2', roughness: 1, map: dirtTex(27), side: THREE.DoubleSide }), 0, 0, 0);
+  // A metal foot pokes out from under the hem.
+  add(g, boxGeo(0.14, 0.08, 0.26), std('#3a3d42', 0.35, 0.85), r * 0.45, 0.04, r * 0.85, true);
+}
+
+function detailBlock(g: THREE.Group, label: string, w: number, h: number, d: number, glows: THREE.MeshStandardMaterial[]): boolean {
+  switch (label) {
+    case 'withered animatronic':
+      sheetFigure(g, w, h, d);
+      return true;
+    case 'ball pit rim': {
+      const pad = std('#d83a7a', 0.7);
+      for (const [x, z, bw, bd] of [[0, -d / 2 + 0.15, w, 0.3], [0, d / 2 - 0.15, w, 0.3], [-w / 2 + 0.15, 0, 0.3, d - 0.6], [w / 2 - 0.15, 0, 0.3, d - 0.6]] as const) add(g, boxGeo(bw, h, bd), pad, x, h / 2, z);
+      add(g, boxGeo(w - 0.6, h - 0.05, d - 0.6), std('#2a6ab8', 0.9), 0, (h - 0.05) / 2, 0, false);
+      // Balls heaped on the pit (the pit floor is the walkable top of the block).
+      const cols = ['#e83a3a', '#3a8ae8', '#e8c22c', '#3ab05a', '#c44fd0'].map((c) => std(c, 0.35));
+      const geo = new THREE.SphereGeometry(0.07, 8, 6);
+      const rng = { s: 7 };
+      const rand = () => ((rng.s = (rng.s * 16807) % 2147483647) / 2147483647);
+      for (const m of cols) {
+        const inst = new THREE.InstancedMesh(geo, m, 160);
+        const t = new THREE.Matrix4();
+        for (let i = 0; i < 160; i++) {
+          t.makeTranslation((rand() - 0.5) * (w - 0.8), h - 0.02 + rand() * 0.08, (rand() - 0.5) * (d - 0.8));
+          inst.setMatrixAt(i, t);
+        }
+        inst.receiveShadow = true;
+        g.add(inst);
+      }
+      return true;
+    }
+    case 'boiler': {
+      const iron = std('#4a4038', 0.7, 0.6);
+      add(g, boxGeo(w, 0.25, d), std('#2e2c2a', 0.9), 0, 0.125, 0);
+      add(g, cyl(Math.min(w, d) / 2 - 0.2, Math.min(w, d) / 2 - 0.15, h - 0.6, 24), new THREE.MeshStandardMaterial({ color: '#5a4a3a', metalness: 0.6, roughness: 0.65, map: dirtTex(29) }), 0, 0.25 + (h - 0.6) / 2, 0);
+      add(g, new THREE.SphereGeometry(Math.min(w, d) / 2 - 0.2, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), iron, 0, h - 0.35, 0).scale.y = 0.35;
+      for (let i = 0; i < 6; i++) add(g, new THREE.TorusGeometry(Math.min(w, d) / 2 - 0.16, 0.035, 6, 32), iron, 0, 0.6 + i * 0.5, 0, false).rotation.x = Math.PI / 2;
+      const gaugeMat = new THREE.MeshStandardMaterial({ color: '#f0e8d0', emissive: '#ff8a30', emissiveIntensity: 0.15, roughness: 0.4 });
+      glows.push(gaugeMat);
+      for (const gx of [-0.4, 0.4]) {
+        add(g, cyl(0.12, 0.12, 0.05, 18), gaugeMat, gx, 1.6, Math.min(w, d) / 2 - 0.12, false).rotation.x = Math.PI / 2;
+      }
+      add(g, boxGeo(0.5, 0.4, 0.15), std('#2a2a2a', 0.6, 0.6), 0, 0.7, Math.min(w, d) / 2 - 0.12);
+      return true;
+    }
+    case 'generator': {
+      add(g, boxGeo(w, h * 0.85, d), std('#c8a020', 0.55, 0.3), 0, (h * 0.85) / 2, 0);
+      for (let i = 0; i < 6; i++) add(g, boxGeo(w * 0.7, 0.02, 0.01), std('#1a1a1a', 0.8), 0, 0.25 + i * 0.1, d / 2 + 0.006, false);
+      add(g, cyl(0.07, 0.07, h * 0.15, 10), std('#2a2a2a', 0.6, 0.6), w * 0.3, h * 0.925, -d * 0.25);
+      return true;
+    }
+    case 'server racks': {
+      const n = Math.max(1, Math.round(w / 0.8));
+      const rw = w / n;
+      for (let i = 0; i < n; i++) {
+        const x = -w / 2 + (i + 0.5) * rw;
+        add(g, boxGeo(rw - 0.03, h, d), std('#1a1c20', 0.5, 0.5), x, h / 2, 0);
+        for (let u = 0; u < 10; u++) {
+          add(g, boxGeo(rw - 0.12, 0.12, 0.01), std('#2a2e34', 0.4, 0.6), x, 0.2 + u * 0.17, d / 2 + 0.005, false);
+          const led = new THREE.MeshStandardMaterial({ color: '#000', emissive: u % 3 ? '#20ff60' : '#ffb020', emissiveIntensity: 1.5 });
+          glows.push(led);
+          add(g, boxGeo(0.02, 0.015, 0.005), led, x + rw / 2 - 0.12, 0.2 + u * 0.17, d / 2 + 0.012, false);
+        }
+      }
+      return true;
+    }
+    case 'pipes': {
+      for (const off of [-d / 4, d / 4]) add(g, cyl(d / 4 - 0.01, d / 4 - 0.01, w, 12), new THREE.MeshStandardMaterial({ color: '#5a4a3a', metalness: 0.6, roughness: 0.6, map: dirtTex(31) }), 0, h / 2, off).rotation.z = Math.PI / 2;
+      return true;
+    }
+    case 'shoe cubbies': {
+      add(g, boxGeo(w, h, d), woodMat(), 0, h / 2, 0);
+      for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 6; c++) {
+          add(g, boxGeo(w / 6 - 0.06, h / 3 - 0.06, 0.02), std('#1a120a', 0.9), -w / 2 + (c + 0.5) * (w / 6), (r + 0.5) * (h / 3), d / 2 + 0.002, false);
+          if ((r * 6 + c) % 3 === 0) add(g, boxGeo(0.16, 0.07, 0.04), std(PASTEL[(r + c) % 5], 0.6), -w / 2 + (c + 0.5) * (w / 6), (r + 0.5) * (h / 3) - 0.08, d / 2 + 0.02, false);
+        }
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
 export interface PropBuild {
   object: THREE.Object3D;
   /** Materials that glow and should dim when their room's power is off. */
@@ -130,13 +239,19 @@ export function buildProp(def: PropDef): PropBuild {
       const w = num('w', 1);
       const h = num('h', 1);
       const d = num('d', 1);
-      const mat = blockMat(String(def.p?.mat ?? 'steel'));
+      const label = String(def.p?.label ?? '');
+      // Labelled blocks with a modelled stand-in. Each stays inside the block's box, which is its collider.
+      if (detailBlock(g, label, w, h, d, glows)) break;
+      const stall = label === 'stall';
+      // Restroom partitions are painted steel with a darker edge cap, not tile.
+      const mat = stall ? std('#b8b098', 0.45, 0.35) : blockMat(String(def.p?.mat ?? 'steel'));
       const mesh = add(g, boxGeo(w, h, d), mat, 0, h / 2, 0);
-      const mt = String(def.p?.mat);
-      if (mt === 'sheet') {
-        mesh.scale.set(1, 1, 1);
-        add(g, boxGeo(w * 0.5, 0.4, d * 0.5), mat, 0, h + 0.2, 0);
+      if (stall) {
+        add(g, boxGeo(w + 0.02, 0.04, d + 0.02), std('#6a6658', 0.4, 0.6), 0, h - 0.02, 0, false);
+        add(g, boxGeo(w + 0.02, h, 0.04), std('#6a6658', 0.4, 0.6), 0, h / 2, d / 2 - 0.02, false);
       }
+      const mt = String(def.p?.mat);
+      void mesh;
       if (mt === 'glass') {
         add(g, boxGeo(w * 0.96, 0.05, d * 0.96), steelMat(), 0, h * 0.5, 0);
         add(g, boxGeo(w * 0.5, 0.3, d * 0.5), std('#d0a040', 0.7), 0, 0.2, 0);
