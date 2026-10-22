@@ -392,8 +392,20 @@ export class FrSim {
       const rate = d.kind === 'shutter' ? (tgt > cur ? 1 / 1.5 : 1 / 1.2) : d.kind === 'roller' ? 0.5 : 2.4;
       // A shutter won't close on a player standing under it.
       if (d.kind === 'shutter' && tgt < cur && this.anyoneInDoorway(i)) continue;
-      this.world.doorOpen[i] = cur + Math.sign(tgt - cur) * Math.min(Math.abs(tgt - cur), rate * dt);
+      const nextOpen = cur + Math.sign(tgt - cur) * Math.min(Math.abs(tgt - cur), rate * dt);
+      // A hinged door stops against a guard in its swing rather than pushing them (possibly into a wall).
+      if (d.kind !== 'shutter' && d.kind !== 'roller' && d.kind !== 'curtain' && this.anyoneInSwing(i, nextOpen)) continue;
+      this.world.doorOpen[i] = nextOpen;
     }
+  }
+
+  anyoneInSwing(id: number, open: number): boolean {
+    for (const p of this.players.values()) {
+      if (p.ghost || p.hidden || p.exited) continue;
+      const b = p.body;
+      if (this.world.doorWouldHit(id, open, b.x, b.y, b.z, FR.player.RADIUS - 0.02, b.height)) return true;
+    }
+    return false;
   }
 
   anyoneInDoorway(id: number): boolean {

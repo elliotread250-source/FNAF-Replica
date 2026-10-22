@@ -46,6 +46,8 @@ export function doorLeaves(d: FrDoorDef, open: number): DoorLeaf[] {
   return [{ hx: alongX ? hinge : d.line, hz: alongX ? d.line : hinge, vx, vz, angle }];
 }
 
+const scratchDoor: Collider[] = [];
+
 const isHinged = (d: FrDoorDef) => d.kind === 'swing' || d.kind === 'exit' || d.kind === 'glass' || d.kind === 'double';
 
 /**
@@ -129,6 +131,20 @@ export class CollisionWorld {
         }
       }
     });
+  }
+
+  /**
+   * Would door `id`, posed at openness `open`, overlap a body (vertical cylinder at feet x, y, z)? Used to stop a
+   * hinged door mid-swing instead of shoving whoever is standing in its path.
+   */
+  doorWouldHit(id: number, open: number, x: number, y: number, z: number, r: number, h: number): boolean {
+    const p = this.posed[id];
+    doorBoxes(this.doorDefs[id], p.closed, open, scratchDoor);
+    for (const b of scratchDoor) {
+      if (b.y2 <= y || b.y1 >= y + h) continue;
+      if (circleBox(x, z, r, b) > 0) return true;
+    }
+    return false;
   }
 
   /** Colliders returned by `query` are already posed for their door's state, so every one of them is live. */

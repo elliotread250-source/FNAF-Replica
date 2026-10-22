@@ -228,3 +228,161 @@ describe('security office kit', () => {
     }
   });
 });
+
+describe('walls hold everywhere', () => {
+  const roomAt = (x: number, z: number, y: number): string | null => {
+    for (const r of level.rooms) {
+      if (Math.abs(r.floorY - y) > 0.4) continue;
+      for (const [x1, z1, x2, z2] of r.rects) if (x >= x1 && x < x2 && z >= z1 && z < z2) return r.id;
+    }
+    return null;
+  };
+
+  it('sprinting square into every wall span, from both sides, never crosses it', () => {
+    const w = new CollisionWorld(level);
+    w.doorOpen.fill(0);
+    const crossed: string[] = [];
+    let tried = 0;
+    for (const wr of level.walls) {
+      if (!wr.lo || !wr.hi) continue;
+      const len = wr.b - wr.a;
+      if (len < 1.2) continue;
+      for (const side of [-1, 1] as const) {
+        for (const f of [0.25, 0.5, 0.75]) {
+          const along = wr.a + len * f;
+          const off = side * 0.9;
+          const x = wr.axis === 'x' ? wr.line + off : along;
+          const z = wr.axis === 'x' ? along : wr.line + off;
+          const y = wr.y1;
+          const g = w.groundAt(x, y, z, P.RADIUS, P.STEP_HEIGHT);
+          if (g === -Infinity || Math.abs(g - y) > 0.01 || w.blocked(x, y, z, P.RADIUS, P.HEIGHT_STAND, P.STEP_HEIGHT)) continue;
+          const yaw = wr.axis === 'x' ? (side < 0 ? YAW.E : YAW.W) : side < 0 ? YAW.S : YAW.N;
+          const b = newBody(x, z, y, yaw);
+          run(b, w, { fwd: 1, sprint: true }, 1.2);
+          tried++;
+          const after = wr.axis === 'x' ? b.x - wr.line : b.z - wr.line;
+          if (Math.sign(after) !== side) crossed.push(`${wr.lo}|${wr.hi} ${wr.axis}=${wr.line} at ${along.toFixed(1)}`);
+        }
+      }
+    }
+    expect(tried).toBeGreaterThan(300);
+    expect(crossed).toEqual([]);
+  });
+
+  it('a 45 degree approach slides along the wall instead of sticking or passing', () => {
+    const w = new CollisionWorld(level);
+    // Lounge west wall (x = 2): run north-west into it.
+    const b = newBody(4, 56, 0, Math.PI / 4);
+    run(b, w, { fwd: 1 }, 2);
+    expect(b.x).toBeGreaterThan(2.1);
+    expect(b.z).toBeLessThan(54.5); // kept moving north along the wall
+  });
+
+  it('glancing a convex corner neither snags nor clips through', () => {
+    const w = new CollisionWorld(level);
+    w.doorOpen.fill(1);
+    // West Hall meets West Corner at the arch x = 14, z 48..50: skim past the wall end at (14, 48) heading south.
+    const b = newBody(13.75, 46.5, 0, YAW.S);
+    run(b, w, { fwd: 1 }, 0.7);
+    expect(b.z).toBeGreaterThan(48.3);
+    expect(b.speed).toBeGreaterThan(1);
+  });
+
+  it('a huge frame (half a second after a tab switch) still cannot tunnel', () => {
+    const w = new CollisionWorld(level);
+    const b = newBody(8, 55, 0, YAW.W);
+    for (let i = 0; i < 6; i++) stepBody(b, { ...idle, yaw: YAW.W, fwd: 1, sprint: true }, 0.5, w);
+    expect(b.x).toBeGreaterThan(2.1);
+  });
+
+  it('never moves from one room into a room it is not linked to (no gaps at wall junctions)', () => {
+    const w = new CollisionWorld(level);
+    w.doorOpen.fill(1);
+    const step = 0.25;
+    const start = level.spawns[0];
+    const k = (x: number, z: number, y: number) => `${Math.round(x / step)},${Math.round(z / step)},${Math.round(y * 2)}`;
+    const seen = new Set([k(start.x, start.z, 0)]);
+    const queue: [number, number, number][] = [[start.x, start.z, 0]];
+    const bad = new Set<string>();
+    while (queue.length) {
+      const [x, z, y] = queue.pop() as [number, number, number];
+      const ra = roomAt(x, z, y);
+      for (const [dx, dz] of [[step, 0], [-step, 0], [0, step], [0, -step]]) {
+        const nx = x + dx;
+        const nz = z + dz;
+        const g = w.groundAt(nx, y, nz, P.RADIUS, P.STEP_HEIGHT);
+        if (g === -Infinity || w.blocked(nx, g, nz, P.RADIUS, P.HEIGHT_STAND, P.STEP_HEIGHT)) continue;
+        const rb = roomAt(nx, nz, g);
+        if (ra && rb && ra !== rb && !(level.links[ra] ?? []).includes(rb)) bad.add(`${ra}->${rb} near ${nx.toFixed(2)},${nz.toFixed(2)}`);
+        const key = k(nx, nz, g);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        queue.push([nx, nz, g]);
+      }
+    }
+    expect([...bad]).toEqual([]);
+  });
+});
+
+describe('recovery and door courtesy', () => {
+  it('a body left inside a wall goes back to where it last stood', () => {
+    const w = new CollisionWorld(level);
+    const b = newBody(8, 55, 0, 0);
+    run(b, w, {}, 0.2);
+    // Teleport into the middle of the thick west exterior wall of the lounge (x = 2) and well below the floor.
+    Object.assign(b, { x: 2, z: 55 });
+    b.y = -40;
+    run(b, w, {}, DT);
+    expect(b.x).toBeCloseTo(8, 3);
+    expect(b.y).toBeCloseTo(0, 3);
+  });
+
+  it('a swinging door stops against a guard in its path instead of shoving them', async () => {
+    const { FrSim } = await import('../src');
+    const sim = new FrSim({ seed: 3, night: 1, mode: 'day', playerCount: 1 });
+    const p = sim.addPlayer('a', 'A');
+    const d = door('Supply Closet door');
+    sim.world.doorOpen[d.id] = 0;
+    sim.doorTarget[d.id] = 0;
+    const [leaf] = doorLeaves(d, 1);
+    // Stand where the leaf ends up when fully open.
+    Object.assign(p.body, { x: leaf.hx + leaf.vx * 0.6, z: leaf.hz + leaf.vz * 0.6, y: 0 });
+    const before = { x: p.body.x, z: p.body.z };
+    sim.setDoor(d.id, true, 'a');
+    for (let i = 0; i < 60; i++) sim.tick();
+    expect(sim.world.doorOpen[d.id]).toBeLessThan(0.95);
+    expect(Math.hypot(p.body.x - before.x, p.body.z - before.z)).toBeLessThan(0.05);
+  });
+});
+
+describe('four guards at once', () => {
+  it('four simulated players weaving through the staff area stay out of walls and replay identically', async () => {
+    const { FrSim } = await import('../src');
+    const play = () => {
+      const sim = new FrSim({ seed: 9, night: 1, mode: 'day', playerCount: 4 });
+      const ids = ['a', 'b', 'c', 'd'];
+      for (const id of ids) sim.addPlayer(id, id);
+      sim.world.doorOpen.fill(1);
+      sim.doorTarget.fill(1);
+      const out: number[] = [];
+      for (let t = 0; t < 30 * 8; t++) {
+        ids.forEach((id, i) => {
+          const yaw = Math.PI + Math.sin(t / 25 + i) * 0.9 + (t > 120 ? Math.PI : 0);
+          sim.setCmd(id, { fwd: 1, strafe: Math.sin(t / 9 + i) * 0.5, yaw, pitch: 0, sprint: (t + i * 7) % 60 < 25, stance: 0, jump: t % 47 === i, flash: false, breath: false });
+        });
+        sim.tick();
+        for (const id of ids) {
+          const b = (sim.players.get(id) as { body: Body }).body;
+          if (b.vault > 0) continue;
+          expect(sim.world.blocked(b.x, b.y, b.z, P.RADIUS * 0.9, b.height, P.STEP_HEIGHT)).toBe(false);
+        }
+      }
+      for (const id of ids) {
+        const b = (sim.players.get(id) as { body: Body }).body;
+        out.push(b.x, b.y, b.z);
+      }
+      return out;
+    };
+    expect(play()).toEqual(play());
+  });
+});
