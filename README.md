@@ -47,6 +47,11 @@ Fewer than four guards? Unused stations are sealed. One guard gets a merged Solo
 | Chat / callout wheel | Enter / G |
 | Settings and leave | Esc (the night never pauses) |
 
+On a phone or tablet the game shows touch controls instead: drag across the office to look, tap Door, hold
+Light, tap Cams, and in free roam a floating joystick under the left thumb with drag-to-look on the right. They
+switch on by themselves for touch screens; Settings > Accessibility > Touch controls (or `?touch=1`) forces them.
+Turn the phone sideways.
+
 Every binding can be changed in the Notice Board. Accessibility: reduced jump scares, photosensitivity
 mode, subtitles, visual sound cues, colourblind button labels, hold-or-toggle lights, hide gore.
 
