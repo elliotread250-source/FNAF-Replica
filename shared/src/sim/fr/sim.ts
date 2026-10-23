@@ -792,7 +792,11 @@ export class FrSim {
     this.emit({ t: 'ghost', pid: p.id });
   }
 
+  /** Test hooks: stop the night clock (hours and the 6 AM end) so long network tests can finish. */
+  clockHeld = false;
+
   private tickClock(): void {
+    if (this.clockHeld) return;
     const h = Math.floor(this.time / this.hourSeconds);
     if (h !== this.hour) {
       this.hour = h;

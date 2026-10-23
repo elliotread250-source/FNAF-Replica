@@ -61,7 +61,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test fourPlayers freeRoam
+      - run: npx playwright test fourPlayers freeRoam netLag mobile
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

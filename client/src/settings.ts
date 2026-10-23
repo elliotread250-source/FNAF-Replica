@@ -28,6 +28,8 @@ export interface Settings {
   hideGore: boolean;
   reducedMotion: boolean;
   directMouse: boolean;
+  /** On-screen touch controls: auto (phones and tablets), always on, or off. */
+  touchControls: 'auto' | 'on' | 'off';
   hourBar: boolean;
   profanityFilter: boolean;
   bindings: Record<string, string[]>;
@@ -82,6 +84,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideGore: false,
   reducedMotion: false,
   directMouse: false,
+  touchControls: 'auto',
   hourBar: false,
   profanityFilter: true,
   bindings: DEFAULT_BINDINGS,

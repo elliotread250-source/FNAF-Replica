@@ -152,10 +152,30 @@ function sagRun(p: KitPart, radius: number, sag: number, span: number, count: nu
 
 export interface RoomKitBuild {
   byRoom: Map<string, THREE.Group>;
+  /** Animated parts (stage cans, kitchen steam). `lit(room)` says whether that room has power. */
+  update(dt: number, lit: (room: string) => boolean): void;
+}
+
+function greaseTex(wall: boolean): THREE.Texture {
+  return canvasTex(`kit:grease:${wall}`, 256, 64, (c) => {
+    const rng = createRng(wall ? 41 : 42);
+    for (let i = 0; i < (wall ? 120 : 60); i++) {
+      const x = next(rng) * 256;
+      const y = wall ? 64 - Math.pow(next(rng), 2) * 64 : next(rng) * 64;
+      const r = 2 + next(rng) * (wall ? 6 : 14);
+      c.fillStyle = `rgba(${wall ? '40,26,8' : '30,24,12'},${0.12 + next(rng) * 0.3})`;
+      c.beginPath();
+      c.ellipse(x, y, r, r * (wall ? 1.4 : 0.6), next(rng), 0, Math.PI * 2);
+      c.fill();
+    }
+  }, true);
 }
 
 export function buildRoomKits(): RoomKitBuild {
   const byRoom = new Map<string, THREE.Group>();
+  // Animated parts are flagged userData.dynamic so the per-room static merge leaves them as they are.
+  const sweeps: { pivot: THREE.Object3D; phase: number; lens: THREE.MeshStandardMaterial; room: string }[] = [];
+  const steams: { points: THREE.Points; base: Float32Array; room: string; mat: THREE.PointsMaterial }[] = [];
   const rootFor = (room: string) => {
     let g = byRoom.get(room);
     if (!g) {
@@ -281,9 +301,17 @@ export function buildRoomKits(): RoomKitBuild {
         const cans = Number(p.p?.cans ?? 4);
         for (let i = 0; i < cans; i++) {
           const z = from + ((i + 0.5) * len) / cans;
-          const can = add(g, cyl(0.08, 0.1, 0.24, 12), plain('#141414', 0.5, 0.4), x + (i % 2 ? 0.12 : -0.12), p.y - 0.25, z);
+          // Each can hangs from a yoke pivot that sweeps slowly across the stage (seeded phase, no strobing).
+          const pivot = new THREE.Group();
+          pivot.position.set(x + (i % 2 ? 0.12 : -0.12), p.y - 0.13, z);
+          pivot.userData.dynamic = true;
+          g.add(pivot);
+          add(pivot, box(0.02, 0.14, 0.2), darkSteel, 0, 0, 0, false);
+          const can = add(pivot, cyl(0.08, 0.1, 0.24, 12), plain('#141414', 0.5, 0.4), 0, -0.12, 0);
           can.rotation.z = (i % 2 ? -1 : 1) * 0.5;
-          add(g, cyl(0.07, 0.07, 0.01, 12), new THREE.MeshStandardMaterial({ color: '#111', emissive: ['#ff5040', '#ffd060', '#60a0ff'][i % 3], emissiveIntensity: 0.6 }), x + (i % 2 ? 0.17 : -0.17), p.y - 0.33, z, false);
+          const lens = new THREE.MeshStandardMaterial({ color: '#111', emissive: ['#ff5040', '#ffd060', '#60a0ff'][i % 3], emissiveIntensity: 0.6 });
+          add(pivot, cyl(0.07, 0.07, 0.01, 12), lens, (i % 2 ? 0.05 : -0.05), -0.2, 0, false);
+          sweeps.push({ pivot, phase: i * 1.3, lens, room: p.room });
         }
         break;
       }
@@ -465,6 +493,46 @@ export function buildRoomKits(): RoomKitBuild {
         add(g, new THREE.SphereGeometry(0.008, 6, 4), new THREE.MeshStandardMaterial({ color: '#200', emissive: '#ff2010', emissiveIntensity: 2 }), 0.05, 0.085, 0.032, false);
         break;
       }
+      case 'stallDoor': {
+        // Built in the leaf's own frame (lw x ld), turned with the group like its oriented collider.
+        const lw2 = Number(p.p?.lw ?? 0.85);
+        const ld2 = Number(p.p?.ld ?? 0.04);
+        add(g, box(lw2, p.h, ld2), plain('#b8b098', 0.45, 0.35), 0, p.h / 2, 0);
+        add(g, box(0.03, 0.1, 0.05), plain('#7a7a72', 0.4, 0.7), lw2 / 2 - 0.08, p.h * 0.55, 0, false);
+        add(g, box(lw2 * 0.6, 0.12, 0.002), plain('#2a2a3a', 0.9), 0, p.h * 0.7, ld2 / 2 + 0.002, false);
+        break;
+      }
+      case 'tablet': {
+        add(g, box(decalW + 0.04, p.h + 0.04, 0.03), plain('#1a1a1a', 0.5, 0.4), 0, 0, 0.015);
+        add(g, new THREE.PlaneGeometry(decalW, p.h), new THREE.MeshStandardMaterial({ color: '#000', emissive: '#4a8aff', emissiveIntensity: 0.35, roughness: 0.2 }), 0, 0, 0.031, false);
+        add(g, box(0.06, 0.012, 0.004), new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveIntensity: 0.8 }), 0, -0.04, 0.033, false);
+        break;
+      }
+      case 'grease': {
+        const onWall = p.y > 0.1;
+        const m = add(g, new THREE.PlaneGeometry(onWall ? decalW : p.w, onWall ? p.h : p.d), new THREE.MeshStandardMaterial({ map: greaseTex(onWall), transparent: true, depthWrite: false, roughness: 0.25, polygonOffset: true, polygonOffsetFactor: -2 }), 0, 0, onWall ? 0.002 : 0, false);
+        if (!onWall) m.rotation.x = -Math.PI / 2;
+        break;
+      }
+      case 'steam': {
+        const n = 90;
+        const pos = new Float32Array(n * 3);
+        const base = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          base[i * 3] = (next(rng) - 0.5) * p.w;
+          base[i * 3 + 1] = next(rng);
+          base[i * 3 + 2] = (next(rng) - 0.5) * p.d;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({ color: '#e8eef0', size: 0.18, transparent: true, opacity: 0.18, depthWrite: false });
+        const points = new THREE.Points(geo, mat);
+        points.userData.dynamic = true;
+        points.frustumCulled = false;
+        g.add(points);
+        steams.push({ points, base, room: p.room, mat });
+        break;
+      }
       case 'barrels': {
         for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
           if (next(rng) < 0.15) continue;
@@ -475,5 +543,33 @@ export function buildRoomKits(): RoomKitBuild {
       }
     }
   }
-  return { byRoom };
+  let t = 0;
+  return {
+    byRoom,
+    update(dt, lit) {
+      t += dt;
+      for (const sw of sweeps) {
+        const on = lit(sw.room);
+        // A slow 0.08 Hz sweep, never a flash; dark rigs park.
+        if (on) {
+          sw.pivot.rotation.x = Math.sin(t * 0.5 + sw.phase) * 0.35;
+          sw.pivot.rotation.z = Math.cos(t * 0.37 + sw.phase) * 0.2;
+        }
+        sw.lens.emissiveIntensity = on ? 0.9 : 0.05;
+      }
+      for (const st of steams) {
+        const on = lit(st.room);
+        st.points.visible = on;
+        if (!on) continue;
+        const pos = st.points.geometry.attributes.position as THREE.BufferAttribute;
+        const h = 1.3;
+        for (let i = 0; i < pos.count; i++) {
+          const rise = (st.base[i * 3 + 1] + t * 0.12) % 1;
+          pos.setXYZ(i, st.base[i * 3] + Math.sin(t * 0.7 + i) * 0.05 * rise, 0.25 + rise * h, st.base[i * 3 + 2] + Math.cos(t * 0.5 + i) * 0.05 * rise);
+        }
+        pos.needsUpdate = true;
+        st.mat.opacity = 0.16;
+      }
+    },
+  };
 }

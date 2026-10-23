@@ -5,6 +5,7 @@
 // docs/MAP_REBUILD_PROGRESS.md has the per-room inventory and what is interpreted rather than seen in 2014.
 
 import { BASEMENT_Y } from './layout';
+import { rotatedBoxes, rotatedExtent } from './rotated';
 import type { Collider } from './types';
 
 export type KitPolicy = 'solid' | 'surface' | 'flat' | 'overhead';
@@ -39,7 +40,11 @@ export type KitKind =
   | 'timeclock'
   | 'coats'
   | 'lockers'
-  | 'keypad';
+  | 'keypad'
+  | 'stallDoor'
+  | 'tablet'
+  | 'grease'
+  | 'steam';
 
 export interface KitPart {
   id: string;
@@ -66,6 +71,12 @@ export const ROOM_KITS: KitPart[] = [];
 const box = (x1: number, x2: number, z1: number, z2: number, y1: number, y2: number, low = false): Collider => ({ x1, x2, z1, z2, y1, y2, kind: 'prop', low });
 
 /** A solid floor-standing part whose collider is exactly its bounds. */
+/** A solid part turned `ry` degrees (any angle): its collider is the oriented box from rotated.ts. */
+function turned(id: string, room: string, kind: KitKind, x: number, z: number, w: number, d: number, h: number, ry: number, note: string, y1 = 0, p?: KitPart['p']): void {
+  const [ex, ez] = rotatedExtent(w, d, ry);
+  ROOM_KITS.push({ id, room, kind, x, y: y1, z, w: ex, h, d: ez, ry, policy: 'solid', boxes: rotatedBoxes(x, z, w, d, ry, y1, y1 + h), p: { lw: w, ld: d, ...p }, note });
+}
+
 function solid(id: string, room: string, kind: KitKind, x: number, z: number, w: number, d: number, h: number, ry: number, note: string, p?: KitPart['p'], y = 0): void {
   ROOM_KITS.push({ id, room, kind, x, y, z, w, h, d, ry, policy: 'solid', boxes: [box(x - w / 2, x + w / 2, z - d / 2, z + d / 2, y, y + h, h <= 1.0)], p, note });
 }
@@ -147,6 +158,9 @@ wall('backstage.board', 'backstage', 'board', 'z', 35.825, 60.5, 1.6, 1.8, 1.0, 
 over('kitchen.hood', 'kitchen', 'hood', 44, 2.65, 44.75, 6.2, 0.6, 1.2, 'Extraction hood over the range; underside 2.35 m.');
 solid('kitchen.fridge', 'kitchen', 'fridge', 51.35, 45.1, 0.9, 0.8, 2.0, -90, 'Two-door upright fridge.');
 surface('kitchen.pots', 'kitchen', 'pots', 44, 1.0, 44.7, 4.0, 0.3, 0.6, 'Stock pots and a pan on the range.');
+ROOM_KITS.push({ id: 'kitchen.grease.floor', room: 'kitchen', kind: 'grease', x: 44, y: 0.004, z: 45.85, w: 5.4, h: 0.002, d: 1.0, ry: 0, policy: 'flat', note: 'Grease tracked across the tiles in front of the range.' });
+wall('kitchen.grease.wall', 'kitchen', 'grease', 'z', 44.1, 44, 1.6, 6.0, 0.7, 0, 'Grease and scorch splatter on the wall behind the range.');
+surface('kitchen.steam', 'kitchen', 'steam', 44, 1.0, 44.7, 4.0, 1.3, 0.6, 'Steam off the stock pots while the kitchen has power. Visual only.');
 wall('kitchen.board', 'kitchen', 'board', 'z', 44.1, 39.5, 1.6, 1.6, 0.9, 0, 'Order rail and a utensil rack.', { seed: 9 });
 solid('kitchen.bin', 'kitchen', 'bin', 47.0, 51.55, 0.5, 0.5, 0.75, 0, 'Grease-stained kitchen bin.');
 
@@ -158,6 +172,16 @@ wall('women.mirror', 'women', 'mirror', 'z', 43.9, 40.25, 1.55, 3.0, 0.8, 180, '
 // Toilets at the back of each stall (the hiding spots stand in front of them).
 for (const [i, x] of [43, 45, 47].entries()) solid(`men.toilet.${i + 1}`, 'men', 'toilet', x, 32.45, 0.4, 0.66, 0.45, 0, 'Toilet with a cracked seat.');
 for (const [i, x] of [40.25, 42.75, 45.25].entries()) solid(`women.toilet.${i + 1}`, 'women', 'toilet', x, 37.45, 0.4, 0.66, 0.45, 0, 'Toilet.');
+// Stall doors, hung open at 65 degrees into each stall from the left partition (or the stall's left edge).
+// A 0.85 m leaf, 0.04 thick, 0.15 m off the floor like real partition doors; its collider is the turned leaf.
+const stallDoor = (id: string, room: string, hingeX: number, frontZ: number): void => {
+  const a = (65 * Math.PI) / 180;
+  const half = 0.85 / 2;
+  // Local +X of the leaf points along (cos a, -sin a): from the hinge across the stall and back into it.
+  turned(id, room, 'stallDoor', hingeX + Math.cos(a) * half, frontZ - Math.sin(a) * half, 0.85, 0.04, 1.8, 65, 'Stall door, hung open, scratched and graffitied.', 0.15);
+};
+for (const [i, x] of [42, 44, 46].entries()) stallDoor(`men.stallDoor.${i + 1}`, 'men', x + 0.08, 34.25);
+for (const [i, x] of [39, 41.5, 44].entries()) stallDoor(`women.stallDoor.${i + 1}`, 'women', x + 0.08, 39.25);
 wall('restCorr.sign', 'restCorr', 'sign', 'x', 39.9, 33.2, 2.2, 1.2, 0.3, -90, '"RESTROOMS" sign.', { text: 'RESTROOMS', bg: '#1a3a5a', fg: '#e8f0ff' });
 ROOM_KITS.push({ id: 'restCorr.puddle', room: 'restCorr', kind: 'puddle', x: 37.6, y: 0.004, z: 35.6, w: 1.1, h: 0.002, d: 0.8, ry: 0, policy: 'flat', note: 'A puddle from a leaking cistern.' });
 
@@ -173,6 +197,7 @@ for (const [i, room] of ['party1', 'party2', 'party3', 'party4'].entries()) {
 }
 wall('staff.board', 'staff', 'board', 'x', 2.175, 63, 1.6, 1.4, 0.9, 90, 'Noticeboard: rotas, a missing-child flyer, safety notices.', { seed: 12 });
 // Staff Entrance: exterior walls on three sides (faces 0.175 in). Spawns stand at x 3.5 / 6.5, z 61.5 / 63.5.
+wall('staff.tablet', 'staff', 'tablet', 'x', 7.825, 63.9, 1.4, 0.28, 0.2, -90, 'Clock-in tablet in a locked wall bracket, screen asleep with a blinking prompt.');
 wall('staff.timeclock', 'staff', 'timeclock', 'x', 7.825, 64.7, 1.35, 0.32, 0.42, -90, 'Punch clock with a rack of time cards.');
 wall('staff.coats', 'staff', 'coats', 'x', 2.175, 61.0, 1.55, 1.3, 0.9, 90, 'Coat hooks: two jackets and a stained apron. Soft cloth, no collider.');
 solid('staff.lockers', 'staff', 'lockers', 2.45, 64.95, 0.5, 1.3, 1.8, 90, 'Three scuffed half-height staff lockers.');

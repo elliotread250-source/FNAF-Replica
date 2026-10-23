@@ -4,7 +4,7 @@ import { BatchSet } from './batch';
 import { EXTERIOR, makeStyles, TRIM, type StyleMats } from './materials';
 import { buildProp } from './props';
 import { buildOfficeKit, type OfficeKitRender } from './officeKit';
-import { buildRoomKits } from './roomKits';
+import { buildRoomKits, type RoomKitBuild } from './roomKits';
 import { mergeStatic } from './merge';
 
 /** Which circuits are live. The game owns this; the renderer only reads it. */
@@ -36,6 +36,8 @@ export class WorldRender {
   readonly roomGroups = new Map<string, THREE.Group>();
   readonly doors = new Map<number, DoorVisual>();
   readonly fixtures: Fixture[] = [];
+  /** Building-wide set dressing (ROOM_KITS); its update() drives the animated parts. */
+  readonly roomKits: RoomKitBuild;
   /** The Security Office's desk, CRTs, fan and wall dressing (shared catalogue: OFFICE_KIT). */
   readonly officeKit: OfficeKitRender;
   private styles: Record<StyleId, StyleMats>;
@@ -151,7 +153,8 @@ export class WorldRender {
     }
     this.officeKit = buildOfficeKit();
     groupFor('office').add(this.officeKit.root);
-    for (const [room, g] of buildRoomKits().byRoom) dressFor(room).add(g);
+    this.roomKits = buildRoomKits();
+    for (const [room, g] of this.roomKits.byRoom) dressFor(room).add(g);
     for (const [room, g] of dressing) groupFor(room).add(mergeStatic(g));
     this.buildWindows();
     for (const d of level.doors) this.buildDoor(d, groupFor(this.roomOfDoor(d)));
@@ -386,6 +389,7 @@ export class WorldRender {
   /** Ambient/fog target and fixture lighting, called every frame. */
   update(dt: number, power: PowerView, cam: THREE.Vector3, camRoom: string | null): void {
     this.time += dt;
+    this.roomKits.update(dt, (room) => power.lit(this.level.roomById[room]?.circuit ?? 'always', 'fluoro'));
     const t = this.time;
     let litNear = 0;
     for (const f of this.fixtures) {

@@ -1,3 +1,4 @@
+import { TouchControls, touchEnabled, type TouchButton } from './touch';
 import * as THREE from 'three';
 import { CLASSIC_MAP, COOP_MAP, CLIPPINGS, ROSTER_BY_ID, type Input, type MapDef, type PlayerView, type SimEvent, type StationId } from '@fnaf/shared';
 import { getSocket, serverNow } from '../net/socket';
@@ -378,7 +379,15 @@ export class GameSession {
       if (is('tool', c) && (this.station === 'west' || this.station === 'solo')) this.send({ action: 'tool', tool: 'flashlight', on: false });
       if (is('wind', c)) this.send({ action: 'tool', tool: 'wind', on: false });
     };
-    const onMove = (e: MouseEvent) => {
+    // Touch: drag across the office to look around (edge panning makes no sense without a hovering cursor).
+    let drag: { id: number; x: number } | null = null;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        if (drag?.id !== e.pointerId) return;
+        if (this.office && !this.tabletUp()) this.yaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, this.yaw + ((e.clientX - drag.x) / window.innerWidth) * 2.4 * YAW_MAX));
+        drag.x = e.clientX;
+        return;
+      }
       this.mouseX = e.clientX / window.innerWidth;
       if (store.settings.directMouse && this.office && !this.tabletUp()) this.yaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, (0.5 - this.mouseX) * 2 * YAW_MAX));
     };
@@ -395,7 +404,8 @@ export class GameSession {
       this.raycaster.setFromCamera(ndc, this.office.camera);
       return this.raycaster.intersectObjects(this.office.clickables(), false)[0]?.object ?? null;
     };
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') drag = { id: e.pointerId, x: e.clientX };
       if (this.puppeteer) return;
       if (e.button === 2) {
         e.preventDefault();
@@ -420,17 +430,20 @@ export class GameSession {
       else if (name === 'locker') this.send({ action: 'locker_click' });
       else if (name.startsWith('clip:')) this.zoomClip(Number(name.slice(5)));
     };
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
+      if (drag?.id === e.pointerId) drag = null;
       if (heldLight) this.setLight(heldLight, false);
       heldLight = null;
     };
     const onCtx = (e: Event) => e.preventDefault();
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('mousemove', onMove);
-    canvas.addEventListener('mousedown', onDown);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     canvas.addEventListener('contextmenu', onCtx);
+    if (touchEnabled()) this.bindTouch(onKey, onKeyUp);
     const onBlur = () => {
       for (const d of this.myDoors()) if (this.doorState(d.id).l && !store.settings.toggleLights) this.setLight(d.id, false);
       this.keysHeld.clear();
@@ -439,12 +452,41 @@ export class GameSession {
     this.disposers.push(() => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('mousemove', onMove);
-      canvas.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('contextmenu', onCtx);
       window.removeEventListener('blur', onBlur);
     });
+  }
+
+  /** On-screen buttons for phones: each presses the first key bound to its action, so rebinds and toggles still apply. */
+  private bindTouch(onKey: (e: KeyboardEvent) => void, onKeyUp: (e: KeyboardEvent) => void): void {
+    const fake = (code: string) => ({ code, repeat: false, preventDefault() {} }) as unknown as KeyboardEvent;
+    const btn = (id: string, label: string, action: string, cluster: TouchButton['cluster']): TouchButton => {
+      const code = store.settings.bindings[action]?.[0] ?? '';
+      return { id, label, cluster, hold: true, down: () => onKey(fake(code)), up: () => onKeyUp(fake(code)) };
+    };
+    const t = new TouchControls(document.getElementById('ui') ?? document.body, { move() {}, look() {} }, { pad: false });
+    t.setMoveEnabled(false);
+    t.root.classList.add('tc-classic');
+    const sides = new Set(this.myDoors().map((d) => d.side));
+    const list: TouchButton[] = [];
+    if (sides.has('left')) list.push(btn('doorL', 'Door', 'doorLeft', 'office'), btn('lightL', 'Light', 'lightLeft', 'office'));
+    list.push(btn('tablet', 'Cams', 'tablet', 'office'));
+    if (sides.has('right')) list.push(btn('lightR', 'Light', 'lightRight', 'office'), btn('doorR', 'Door', 'doorRight', 'office'));
+    const st = this.station;
+    if (st === 'west' || st === 'solo') list.push(btn('tool', 'Flashlight', 'tool', 'right'));
+    if (st === 'east') list.push(btn('tool', 'Mic', 'tool', 'right'));
+    if (st === 'south') list.push(btn('mask', 'Mask', 'mask', 'right'));
+    if (st === 'solo') list.push(btn('mask', 'Mic', 'mask', 'right'));
+    if (st === 'control') list.push(btn('panel', 'Panel', 'panel', 'right'));
+    list.push(btn('wind', 'Wind', 'wind', 'right'));
+    if (st !== 'solo') list.push(btn('callouts', 'Callouts', 'callouts', 'top'));
+    list.push(btn('pause', 'II', 'pause', 'top'));
+    t.setButtons(list);
+    this.disposers.push(() => t.dispose());
   }
 
   private pause(): void {

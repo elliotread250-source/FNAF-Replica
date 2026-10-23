@@ -104,6 +104,11 @@ export function settingsPanel(onClose: () => void, initial: Tab = 'audio'): HTML
         { class: 'col' },
         toggle('Reduced jump scares (no flash, no shake, scream capped at 50%)', 'reducedJumpscares'),
         toggle('Photosensitivity mode (no flashes, strobes or rapid flicker)', 'photosensitive'),
+        select('Touch controls', 'touchControls', [
+          ['auto', 'Auto (phones and tablets)'],
+          ['on', 'Always on'],
+          ['off', 'Off'],
+        ]),
         toggle('Subtitles', 'subtitles'),
         select('Subtitle size', 'subtitleSize', [
           ['small', 'Small'],

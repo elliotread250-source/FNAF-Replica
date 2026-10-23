@@ -73,6 +73,15 @@ export const C2S = {
   'fr:cmd': FrCmdMsgZ,
   // Test hooks only (TEST_HOOKS=1, never in production): move yourself on the server.
   'fr:test': z.object({ x: z.number().finite(), y: z.number().finite(), z: z.number().finite() }),
+  /** Test hooks only: hold the free-roam night clock. */
+  'fr:clock': z.object({ hold: z.boolean() }),
+  /** Test hooks only: shape this player's free-roam traffic (lag, jitter, stalls). */
+  'fr:net': z.object({
+    lagMs: z.number().min(0).max(2000),
+    jitterMs: z.number().min(0).max(2000),
+    stallEveryMs: z.number().min(0).max(60000),
+    stallMs: z.number().min(0).max(5000),
+  }),
 } as const;
 
 export type C2SName = keyof typeof C2S;

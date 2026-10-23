@@ -221,6 +221,8 @@ function resolveQuality(): Quality {
   } catch {
     /* storage blocked */
   }
+  // Phones and tablets start on the light preset until the title-screen benchmark says otherwise.
+  if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) return 'low';
   return 'medium';
 }
 

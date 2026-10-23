@@ -54,7 +54,7 @@ export class Hud {
     private hdl: HudHandlers,
   ) {
     this.map = mapId === 'classic' ? CLASSIC_MAP : COOP_MAP;
-    this.tabletBar = h('div', { class: 'tablet-bar hud-i', onmouseenter: () => hdl.onTabletBar() }, '▲ ▲ ▲');
+    this.tabletBar = h('div', { class: 'tablet-bar hud-i', onmouseenter: () => hdl.onTabletBar(), onpointerdown: ((e: PointerEvent) => void (e.pointerType === 'touch' && hdl.onTabletBar())) as EventListener }, '▲ ▲ ▲');
     this.chatInput = h('input', { class: 'chat-input', maxlength: '120', placeholder: 'Radio message (Enter to send, Esc to close)' });
     this.chatInput.style.display = 'none';
     this.chatInput.addEventListener('keydown', (e) => {

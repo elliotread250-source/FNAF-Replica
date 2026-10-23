@@ -212,7 +212,7 @@ export class CollisionWorld {
       if (c.y2 > y + step + 1e-4) continue;
       if (c.y2 <= best) continue;
       // Support only if the centre or most of the circle is over the box, so you don't hover on a wall edge.
-      if (circleBox(x, z, r * 0.7, c) > 0 || (x >= c.x1 && x <= c.x2 && z >= c.z1 && z <= c.z2)) best = c.y2;
+      if (circleBox(x, z, r * 0.7, c) > 0 || containsXZ(c, x, z)) best = c.y2;
     }
     return best;
   }
@@ -312,10 +312,36 @@ export class CollisionWorld {
   }
 }
 
+type Rot = NonNullable<Collider['rot']>;
+const loc = { x: 0, z: 0 };
+/** World XZ point into an oriented box's own frame (result in a shared scratch object). */
+function toLocal(r: Rot, x: number, z: number): { x: number; z: number } {
+  const dx = x - r.cx;
+  const dz = z - r.cz;
+  loc.x = dx * r.c - dz * r.s;
+  loc.z = dx * r.s + dz * r.c;
+  return loc;
+}
+/** The oriented box's rectangle as a local-frame Box (same y). */
+const localBox = (b: Collider & { rot: Rot }): Box => ({ x1: -b.rot.hw, x2: b.rot.hw, z1: -b.rot.hd, z2: b.rot.hd, y1: b.y1, y2: b.y2 });
+
+/** Is the XZ point inside the box's footprint (its true rectangle for oriented boxes)? */
+export function containsXZ(b: Collider, x: number, z: number): boolean {
+  if (b.rot) {
+    const p = toLocal(b.rot, x, z);
+    return Math.abs(p.x) <= b.rot.hw && Math.abs(p.z) <= b.rot.hd;
+  }
+  return x >= b.x1 && x <= b.x2 && z >= b.z1 && z <= b.z2;
+}
+
 /**
  * Circle vs box in XZ. Returns penetration depth (> 0 if overlapping) and, via `pushOut`, the correction.
  */
-export function circleBox(cx: number, cz: number, r: number, b: Box): number {
+export function circleBox(cx: number, cz: number, r: number, b: Box & { rot?: Rot }): number {
+  if (b.rot) {
+    const p = toLocal(b.rot, cx, cz);
+    return circleBox(p.x, p.z, r, localBox(b as Collider & { rot: Rot }));
+  }
   const nx = Math.max(b.x1, Math.min(cx, b.x2));
   const nz = Math.max(b.z1, Math.min(cz, b.z2));
   const d = Math.hypot(cx - nx, cz - nz);
@@ -325,7 +351,19 @@ export function circleBox(cx: number, cz: number, r: number, b: Box): number {
 
 const push = { x: 0, z: 0 };
 /** Minimum push that moves the circle out of the box. Result is in a shared scratch object. */
-export function pushOut(cx: number, cz: number, r: number, b: Box): { x: number; z: number } | null {
+export function pushOut(cx: number, cz: number, r: number, b: Box & { rot?: Rot }): { x: number; z: number } | null {
+  if (b.rot) {
+    const rt = b.rot;
+    const p = toLocal(rt, cx, cz);
+    const q = pushOut(p.x, p.z, r, localBox(b as Collider & { rot: Rot }));
+    if (!q) return null;
+    // Back to world axes: world = (lx c + lz s, -lx s + lz c).
+    const wx = q.x * rt.c + q.z * rt.s;
+    const wz = -q.x * rt.s + q.z * rt.c;
+    q.x = wx;
+    q.z = wz;
+    return q;
+  }
   const nx = Math.max(b.x1, Math.min(cx, b.x2));
   const nz = Math.max(b.z1, Math.min(cz, b.z2));
   const dx = cx - nx;
@@ -360,8 +398,15 @@ export function pushOut(cx: number, cz: number, r: number, b: Box): { x: number;
   return push;
 }
 
-/** Slab test. Returns the entry distance, or -1. */
-export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, b: Box): number {
+/** Slab test. Returns the entry distance, or -1. Oriented boxes are tested in their own frame (distances keep). */
+export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, b: Box & { rot?: Rot }): number {
+  if (b.rot) {
+    const rt = b.rot;
+    const o = toLocal(rt, ox, oz);
+    const lox = o.x;
+    const loz = o.z;
+    return rayBox(lox, oy, loz, dx * rt.c - dz * rt.s, dy, dx * rt.s + dz * rt.c, localBox(b as Collider & { rot: Rot }));
+  }
   let tmin = 0;
   let tmax = Infinity;
   const axes: [number, number, number, number][] = [

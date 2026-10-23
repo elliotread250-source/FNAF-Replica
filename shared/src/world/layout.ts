@@ -209,6 +209,11 @@ function prop(type: string, room: string, x: number, z: number, ry = 0, p?: Prop
   PROPS.push({ type, room, x, z, ry, p, y });
 }
 
+/** A solid block turned `ry` degrees; any angle collides along its true outline (rotated.ts). */
+function blockR(room: string, x: number, z: number, w: number, d: number, h: number, ry: number, mat: string, extra: PropDef['p'] = {}): void {
+  prop('block', room, x, z, ry, { w, d, h, mat, ...extra });
+}
+
 /** A solid block with a colour and a size. The client picks materials from `mat`. */
 function block(room: string, x: number, z: number, w: number, d: number, h: number, mat: string, extra: PropDef['p'] = {}, y = 0): void {
   prop('block', room, x, z, 0, { w, d, h, mat, ...extra }, y);
@@ -261,6 +266,7 @@ block('lounge', 6, 54, 2.2, 1.0, 0.75, 'wood', { label: 'break table' });
 // Clear of the West Hall double doors, which swing into the lounge.
 block('lounge', 12.6, 52.6, 0.9, 0.8, 1.9, 'vending', { label: 'vending machine' });
 block('lounge', 8.5, 58.6, 3, 0.5, 0.45, 'wood', { label: 'bench' });
+blockR('lounge', 10.5, 56.5, 2.0, 0.9, 0.8, 25, 'plush', { label: 'angled sofa' });
 
 // Kitchen: prep island, ovens, range, shelving, decorating station
 block('kitchen', 44, 48, 6, 1.4, 0.95, 'steel', { label: 'prep island' });
@@ -297,6 +303,7 @@ for (let i = 0; i < 3; i++) block('women', 39 + i * 2.5, 38.2, 0.1, 2.2, 2.0, 't
 // Backstage and parts
 block('backstage', 60, 31, 6, 1.0, 0.95, 'wood', { label: 'workbench' });
 block('backstage', 66.8, 30, 0.6, 5, 1.8, 'wood', { label: 'costume rack' });
+blockR('backstage', 63.5, 34.5, 1.2, 0.7, 0.9, 35, 'case', { label: 'road case' });
 for (let i = 0; i < 4; i++) block('parts', 70.5 + i * 3, 31, 1.4, 1.4, 1.9, 'sheet', { label: 'withered animatronic' });
 block('parts', 80.4, 28, 0.8, 5, 2.0, 'steel', { label: 'crates' });
 
@@ -306,6 +313,7 @@ block('manager', 55, 51.2, 2.4, 1.0, 0.78, 'wood', { label: 'desk' });
 block('manager', 57.5, 54.6, 0.8, 0.8, 1.4, 'steel', { label: 'filing cabinet' });
 for (let i = 0; i < 5; i++) block('dock', 70 + (i % 3) * 1.2, 52 + Math.floor(i / 3) * 1.2, 1.0, 1.0, 1.0 + (i % 2) * 0.8, 'crate', {});
 block('dock', 80, 56, 1.4, 4, 1.2, 'steel', { label: 'charging cart' });
+blockR('dock', 72, 57.5, 1.6, 1.2, 1.0, -18, 'crate', { label: 'skewed pallet' });
 
 // Utility corridor clutter
 block('utility', 48, 58.2, 1.0, 1.0, 0.9, 'steel', { label: 'laundry cart' });

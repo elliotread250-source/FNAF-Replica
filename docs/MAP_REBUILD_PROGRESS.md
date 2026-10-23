@@ -92,7 +92,7 @@ fuse, then lights that zone. It passes with four browsers.
 ## Tests and verification
 
 - `npm run typecheck`, `npx eslint .`: clean.
-- `vitest run` with Postgres: **142 passed** across 11 files. New suites: `shared/test/collision.test.ts`
+- `vitest run` with Postgres: **145 passed** across 12 files (including the net shaper suite). New suites: `shared/test/collision.test.ts`
   (27) and `shared/test/roomKits.test.ts` (7), plus a layout-checksum assertion in the four-client server test.
   Highlights:
   - sprint square into more than 300 internal wall spans from both sides;
@@ -104,7 +104,8 @@ fuse, then lights that zone. It passes with four browsers.
   - every solid kit part clear of walls, furniture and a 0.7 m doorway apron;
   - all heights inside their room.
 - Ten of the first collision tests fail on the baseline code, so they catch real regressions.
-- Playwright, run the way CI runs it (`npx playwright test fourPlayers freeRoam`): **both pass**:
+- Playwright, run the way CI runs it (`npx playwright test fourPlayers freeRoam netLag mobile`). In the first
+  pass the two original specs both passed:
   four-station classic in 1.7 min, four-browser free roam to 6 AM in 2.1 min. Earlier runs of the
   classic test failed intermittently. The cause turned out to be that both specs left their four WebGL browser
   contexts open after finishing, so the next test ran starved of CPU. Both specs now close their contexts in
@@ -137,15 +138,45 @@ limited by pixel filling should show. A GPU should feel the draw-call cut direct
   game never shows them. All extension rooms and the basement are original.
 - All art is original canvas and geometry code. No 2014 asset is stored or copied.
 
+## Follow-up pass: diagonal props, bad networks, missing objects, phones
+
+Oriented colliders. A collider can now carry `rot` (centre, half extents, cosine and sine, rounded to 1e-9 so
+browser and server agree bit for bit). The broad phase still uses the axis-aligned bounds; circle push-out, ray
+casts, ground probes and vault checks work in the box's own frame. Quarter turns stay plain boxes. Three props
+now sit at real angles: a lounge sofa at 25 degrees, a dock pallet at -18 and a backstage road case at 35, and the
+restroom stall doors hang open at 65 degrees. A test drives a body into each face of a rotated box from nine
+directions and checks it stops flush (within 1 cm) and that rays hit the true outline, not the bounds.
+
+Lag and packet loss. A test-only server shaper (`fr:net`, TEST_HOOKS builds only) delays one player's inbound
+commands and outbound snapshots with seeded jitter and periodic stalls, keeping per-direction order the way TCP
+does. `e2e/netLag.spec.ts` walks a guard into walls and doorframes at 50, 120 and 250 ms one way, then 120 ms with
+450 ms stalls every 2.5 s, then drops and reconnects the socket. At every 100 ms sample the predicted body was
+outside all solids, the predicted and server positions ended within 0.15 m, and the second browser saw the guard
+within 0.6 m of the server. Prediction ran 0.5 to 1.0 m ahead of the server while walking (more at higher lag), which is
+the round trip showing up as expected and proves the shaping was live.
+
+Objects the first pass skipped: the clock-in tablet on the staff-room wall, a stage truss whose two cans sweep
+while the stage circuit is lit, grease on the kitchen floor and wall, steam over the fryer, and stall doors in
+both restrooms.
+
+Phones and tablets. Touch controls switch on for coarse pointers (or `?touch=1`, or Settings > Accessibility >
+Touch controls). Free roam gets a floating joystick under the left thumb (push to the rim to run), drag-to-look
+anywhere else, and buttons that change with context: walking, seated at the office, on the cameras, hiding. The
+classic office gets door, light and camera buttons, drag panning in place of edge panning, and a tappable tablet
+bar. Phones start on the low preset, the page no longer pinch-zooms, and the HUD and menus shrink on short
+screens. `e2e/mobile.spec.ts` runs both modes on an emulated 915 x 412 landscape phone with real Chrome touch
+events: the joystick moved the guard more than 2 m, a drag turned the view, every button did its job, a held
+light stayed on only while held, and no screen scrolled sideways.
+
 ## Not done (honest list)
 
-- No oriented-box colliders: props stay on quarter turns, and a test enforces that.
-- No latency or packet-loss runs at 50/120/250 ms, and no measurements on a real GPU or an integrated laptop
-  GPU.
+- No measurements on a real GPU, a laptop iGPU or a real phone. This container has no GPU and no device, so
+  every frame number above is SwiftShader and the phone runs are Chrome device emulation. Real-device feel
+  (thumb reach, heat, frame pacing on a mid-range phone) still needs a person holding one.
 - Swing doors stop for players, not for animatronics. Agents still open doors through the AI's own door rule
   (doorOpen 0.7), as before.
-- The room kits are a first art pass per room, not the full object list in each spec chapter. Spec items not
-  modelled include the clock-in tablet, a rotating stage light rig, kitchen grease and steam, and the full
-  restroom stall doors.
+- Room kits are a strong art pass, not every last object in each spec chapter.
 - Seated-office parity covers the desk set only; the seated room keeps its own walls, doors and posters.
 - No volumetric dust beyond what already existed, and no new SSAO.
+- Touch controls cover free roam and the classic office. The puppeteer (versus) map already works by tap, but it
+  has no dedicated phone layout.

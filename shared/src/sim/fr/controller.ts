@@ -1,5 +1,5 @@
 import { FR } from '../../frConfig';
-import { CollisionWorld, pushOut } from './collision';
+import { CollisionWorld, containsXZ, pushOut } from './collision';
 
 export type Stance = 0 | 1 | 2; // stand, crouch, crawl
 
@@ -283,7 +283,7 @@ function tryVault(b: Body, world: CollisionWorld, dx: number, dz: number): boole
   for (const c of near) {
     if (!world.isActive(c) || c.kind === 'floor' || c.kind === 'ceiling') continue;
     if (c.y2 <= b.y + P.STEP_HEIGHT || c.y1 > b.y + 0.2) continue;
-    if (px < c.x1 || px > c.x2 || pz < c.z1 || pz > c.z2) continue;
+    if (!containsXZ(c, px, pz)) continue;
     if (c.y2 > top) top = c.y2;
   }
   if (top === -Infinity || top - b.y > P.VAULT_MAX + 1e-6) return false;
