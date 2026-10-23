@@ -1,3 +1,4 @@
+import { TouchControls, touchEnabled, type TouchButton } from './touch';
 import * as THREE from 'three';
 import {
   FR,
@@ -119,6 +120,10 @@ export class FreeRoam {
   private power: PowerView;
   private prev = { x: 0, y: 0, z: 0 };
   private keys = new Set<string>();
+  private touch: TouchControls | null = null;
+  private touchMove = { fwd: 0, strafe: 0, push: 0 };
+  private touchKey = '';
+  private menuAt = 0;
   private stanceToggle: Stance = 0;
   private jumpQueued = false;
   private actQueued: FrAct | null = null;
@@ -227,6 +232,8 @@ export class FreeRoam {
     hideUi: () => {
       this.ui.pause.style.display = 'none';
     },
+    /** Touch tests: where the guard is looking and what the buttons toggled. */
+    look: () => ({ yaw: this.yaw, pitch: this.pitch, flash: this.flashOn, map: this.mapOpen, stance: this.stanceToggle, touch: Boolean(this.touch) }),
     /** Network tests: shape this player's traffic on the server (lag, jitter, stalls). */
     net: (p: { lagMs: number; jitterMs: number; stallEveryMs: number; stallMs: number }) =>
       new Promise((done) => getSocket().emit('fr:net', p, (r: unknown) => done(r))),
@@ -418,7 +425,10 @@ export class FreeRoam {
   private bind(): void {
     const canvas = getRenderer().canvas;
     const onClick = () => {
-      if (!this.locked && !this.ended) void canvas.requestPointerLock?.();
+      // A phone fires a click right after the tap that opened the menu, at the same spot; don't let it close it.
+      if (this.touch) {
+        if (performance.now() - this.menuAt > 450) this.ui.pause.style.display = 'none';
+      } else if (!this.locked && !this.ended) void canvas.requestPointerLock?.();
     };
     const onLock = () => {
       this.locked = document.pointerLockElement === canvas;
@@ -432,45 +442,10 @@ export class FreeRoam {
     };
     const onDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      this.keys.add(e.code);
-      if (e.code === 'Space') {
-        this.jumpQueued = true;
-        e.preventDefault();
-      }
-      if (e.code === 'KeyC') this.stanceToggle = this.stanceToggle === 1 ? 0 : 1;
-      if (e.code === 'KeyX') this.stanceToggle = this.stanceToggle === 2 ? 0 : 2;
-      if (e.code === 'KeyF') {
-        this.flashOn = !this.flashOn;
-        audio.play('click', { gain: 0.5 });
-      }
-      if (e.code === 'KeyM') this.toggleMap();
-      if (e.code === 'KeyT' && !this.me.seated) this.actQueued = { type: 'tablet', up: !this.me.tabletUp };
-      if (this.me.seated) {
-        const office: Record<string, 'doorL' | 'lightL' | 'lightR' | 'doorR'> = { Digit1: 'doorL', Digit2: 'lightL', Digit3: 'lightR', Digit4: 'doorR' };
-        if (office[e.code]) this.actQueued = { type: 'office', what: office[e.code] };
-        if (e.code === 'Space') this.actQueued = { type: 'office', what: 'monitor' };
-      }
-      if (this.me.viewCam && (e.code === 'BracketRight' || e.code === 'BracketLeft' || e.code === 'ArrowRight' || e.code === 'ArrowLeft')) this.cycleCam(e.code === 'BracketRight' || e.code === 'ArrowRight' ? 1 : -1);
-      if (e.code === 'KeyB') this.actQueued = { type: 'battery' };
-      if (e.code === 'KeyG') this.actQueued = { type: 'drop' };
-      if (e.code === 'Tab') {
-        e.preventDefault();
-        this.clipboardOpen = true;
-      }
-      if (e.code === 'KeyE') this.interact();
-      if (e.code === 'F9' && (store.config.testHooks || ['localhost', '127.0.0.1'].includes(location.hostname))) {
-        this.debugOn = !this.debugOn;
-        this.ui.debug.style.display = this.debugOn ? 'block' : 'none';
-      }
-      if (this.me.hidden && (e.code === 'KeyA' || e.code === 'KeyD')) {
-        const spot = this.sim.spot(this.me.hidden.spot);
-        if (spot.exits.length > 1) this.actQueued = { type: 'unhide', exit: e.code === 'KeyA' ? 0 : 1 };
-      }
+      if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
+      this.keyDown(e.code);
     };
-    const onUp = (e: KeyboardEvent) => {
-      this.keys.delete(e.code);
-      if (e.code === 'Tab') this.clipboardOpen = false;
-    };
+    const onUp = (e: KeyboardEvent) => this.keyUp(e.code);
     const onBlur = () => this.keys.clear();
     const onWheel = (e: WheelEvent) => {
       if (this.me.viewCam) this.cycleCam(e.deltaY > 0 ? 1 : -1);
@@ -484,6 +459,7 @@ export class FreeRoam {
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
     window.addEventListener('blur', onBlur);
+    if (touchEnabled()) this.bindTouch();
     this.cleanup.push(() => {
       canvas.removeEventListener('click', onClick);
       document.removeEventListener('pointerlockchange', onLock);
@@ -493,6 +469,121 @@ export class FreeRoam {
       window.removeEventListener('blur', onBlur);
       if (document.pointerLockElement) document.exitPointerLock();
     });
+  }
+
+  /** Phones and tablets: a joystick, drag-to-look and buttons that press the same keys the keyboard does. */
+  private bindTouch(): void {
+    const host = this.ui.root.parentElement ?? this.ui.root;
+    this.touch = new TouchControls(host, {
+      move: (fwd, strafe, push) => (this.touchMove = { fwd, strafe, push }),
+      look: (dx, dy) => {
+        const s = 0.0055;
+        this.yaw -= dx * s;
+        this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch - dy * s));
+      },
+    });
+    this.ui.root.classList.add('touch');
+    this.ui.pause.style.display = 'none';
+    (this.ui.pause.querySelector('p') as HTMLElement).textContent =
+      'Left thumb moves (push all the way to run). Drag anywhere else to look. Tap the buttons to use, jump, crouch, toggle the light, open the Faz-Pad or the map. Hold Use to wind, fix or revive. Tap to resume.';
+    this.cleanup.push(() => this.touch?.dispose());
+  }
+
+  /** Swap the touch buttons to fit what the guard is doing right now (walking, seated, on the cameras, hiding). */
+  private updateTouch(): void {
+    const t = this.touch;
+    if (!t) return;
+    const hidden = this.me.hidden;
+    const exits = hidden ? this.sim.spot(hidden.spot).exits.length : 0;
+    const ctx = this.ended ? 'end' : this.me.seated ? `seat:${this.me.viewCam ?? ''}` : hidden ? `hide:${exits}` : `walk:${this.me.tabletUp ? 1 : 0}:${this.me.viewCam ?? ''}`;
+    if (ctx === this.touchKey) return;
+    this.touchKey = ctx;
+    const key = (id: string, label: string, code: string, cluster: TouchButton['cluster']): TouchButton => ({
+      id,
+      label,
+      cluster,
+      hold: true,
+      down: () => this.keyDown(code),
+      up: () => this.keyUp(code),
+    });
+    const menu: TouchButton = { id: 'menu', label: 'II', cluster: 'top', down: () => {
+        this.menuAt = performance.now();
+        this.ui.pause.style.display = this.ended ? 'none' : 'flex';
+      } };
+    const list: TouchButton[] = [];
+    if (ctx === 'end') {
+      t.setButtons([]);
+      t.setMoveEnabled(false);
+      return;
+    }
+    if (this.me.viewCam) {
+      list.push(key('camPrev', '<', 'ArrowLeft', 'cams'), key('camNext', '>', 'ArrowRight', 'cams'));
+      if (this.me.viewCam === '8') list.push(key('wind', 'Wind', 'KeyW', 'cams'));
+    }
+    if (this.me.seated) {
+      list.push(
+        key('doorL', 'Door', 'Digit1', 'office'),
+        key('lightL', 'Light', 'Digit2', 'office'),
+        key('monitor', 'Cams', 'Space', 'office'),
+        key('lightR', 'Light', 'Digit3', 'office'),
+        key('doorR', 'Door', 'Digit4', 'office'),
+        key('use', 'Stand', 'KeyE', 'right'),
+      );
+    } else if (hidden) {
+      list.push(key('breath', 'Hold breath', 'Space', 'hidden'), key('use', 'Leave', 'KeyE', 'right'));
+      if (exits > 1) list.push(key('exitL', 'Out left', 'KeyA', 'hidden'), key('exitR', 'Out right', 'KeyD', 'hidden'));
+    } else {
+      list.push(
+        key('use', 'Use', 'KeyE', 'right'),
+        key('jump', 'Jump', 'Space', 'right'),
+        key('crouch', 'Crouch', 'KeyC', 'right'),
+        key('crawl', 'Crawl', 'KeyX', 'right'),
+        key('flash', 'Light', 'KeyF', 'right'),
+        key('tablet', this.me.tabletUp ? 'Pad off' : 'Pad', 'KeyT', 'top'),
+        key('map', 'Map', 'KeyM', 'top'),
+      );
+      if (this.mode === 'night') list.push(key('clip', 'Notes', 'Tab', 'top'), key('battery', 'Battery', 'KeyB', 'top'), key('drop', 'Drop', 'KeyG', 'top'));
+    }
+    list.push(menu);
+    t.setButtons(list);
+    t.setMoveEnabled(!this.me.seated && !hidden && !this.me.viewCam);
+  }
+
+  /** A key (or a touch button standing in for one) went down. */
+  private keyDown(code: string): void {
+    this.keys.add(code);
+    if (code === 'Space') this.jumpQueued = true;
+    if (code === 'KeyC') this.stanceToggle = this.stanceToggle === 1 ? 0 : 1;
+    if (code === 'KeyX') this.stanceToggle = this.stanceToggle === 2 ? 0 : 2;
+    if (code === 'KeyF') {
+      this.flashOn = !this.flashOn;
+      audio.play('click', { gain: 0.5 });
+    }
+    if (code === 'KeyM') this.toggleMap();
+    if (code === 'KeyT' && !this.me.seated) this.actQueued = { type: 'tablet', up: !this.me.tabletUp };
+    if (this.me.seated) {
+      const office: Record<string, 'doorL' | 'lightL' | 'lightR' | 'doorR'> = { Digit1: 'doorL', Digit2: 'lightL', Digit3: 'lightR', Digit4: 'doorR' };
+      if (office[code]) this.actQueued = { type: 'office', what: office[code] };
+      if (code === 'Space') this.actQueued = { type: 'office', what: 'monitor' };
+    }
+    if (this.me.viewCam && (code === 'BracketRight' || code === 'BracketLeft' || code === 'ArrowRight' || code === 'ArrowLeft')) this.cycleCam(code === 'BracketRight' || code === 'ArrowRight' ? 1 : -1);
+    if (code === 'KeyB') this.actQueued = { type: 'battery' };
+    if (code === 'KeyG') this.actQueued = { type: 'drop' };
+    if (code === 'Tab') this.clipboardOpen = true;
+    if (code === 'KeyE') this.interact();
+    if (code === 'F9' && (store.config.testHooks || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+      this.debugOn = !this.debugOn;
+      this.ui.debug.style.display = this.debugOn ? 'block' : 'none';
+    }
+    if (this.me.hidden && (code === 'KeyA' || code === 'KeyD')) {
+      const spot = this.sim.spot(this.me.hidden.spot);
+      if (spot.exits.length > 1) this.actQueued = { type: 'unhide', exit: code === 'KeyA' ? 0 : 1 };
+    }
+  }
+
+  private keyUp(code: string): void {
+    this.keys.delete(code);
+    if (code === 'Tab') this.clipboardOpen = false;
   }
 
   dispose(): void {
@@ -778,15 +869,17 @@ export class FreeRoam {
 
   private buildCmd(): FrCmd {
     const k = this.keys;
-    const active = this.locked || Boolean(window.__frAuto);
+    const active = this.locked || Boolean(window.__frAuto) || Boolean(this.touch);
     const hidden = Boolean(this.me.hidden) || this.me.seated;
+    const tm = this.touchMove;
+    const clamp = (v: number) => Math.max(-1, Math.min(1, v));
     const cmd: FrCmd = {
       ...IDLE_CMD,
-      fwd: active && !hidden ? (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) : 0,
-      strafe: active && !hidden ? (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) : 0,
+      fwd: active && !hidden ? clamp((k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) + tm.fwd) : 0,
+      strafe: active && !hidden ? clamp((k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) + tm.strafe) : 0,
       yaw: this.yaw,
       pitch: this.pitch,
-      sprint: k.has('ShiftLeft') || k.has('ShiftRight'),
+      sprint: k.has('ShiftLeft') || k.has('ShiftRight') || tm.push > 0.92,
       stance: (k.has('ControlLeft') ? 1 : this.stanceToggle) as Stance,
       jump: active && !hidden && this.jumpQueued,
       flash: this.flashOn,
@@ -1581,6 +1674,7 @@ export class FreeRoam {
   // ---- HUD ---------------------------------------------------------------------------------------
 
   private updateHud(dt: number): void {
+    this.updateTouch();
     this.target = this.findTarget();
     if (this.messageT > 0) this.messageT -= dt;
     const hid = this.me.hidden;

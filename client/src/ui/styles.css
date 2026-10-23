@@ -212,3 +212,56 @@ a { color: var(--red-hi); }
 .fr-cam-list span.on { background: rgba(207, 232, 208, 0.85); color: #000; }
 .fr-cam-help { margin-top: 8px; font-size: 18px; color: rgba(207, 232, 208, 0.75); }
 .fr-sub { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); max-width: min(900px, 90vw); text-align: center; font: var(--sub-size) 'Courier Prime', monospace; color: #f0ead8; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; }
+
+/* ---- Touch controls (phones and tablets) ---- */
+html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+#stage canvas { touch-action: none; }
+#ui .tc-root { position: fixed; inset: 0; z-index: 30; pointer-events: none; touch-action: none; }
+.tc-pad { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+.tc-stick { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(240, 234, 216, 0.3); background: rgba(0, 0, 0, 0.25); display: none; pointer-events: none; }
+.tc-stick.on { display: block; }
+.tc-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; border-radius: 50%; background: rgba(240, 234, 216, 0.45); transform: translate(-50%, -50%); }
+.tc-cluster { position: absolute; display: flex; gap: 8px; pointer-events: none; }
+.tc-btn { pointer-events: auto; touch-action: none; min-width: 58px; height: 58px; padding: 0 10px; border-radius: 29px; border: 1px solid rgba(240, 234, 216, 0.4); background: rgba(10, 8, 8, 0.55); color: #f0ead8; font: 20px 'VT323', monospace; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.tc-btn.on { background: rgba(160, 30, 20, 0.7); border-color: #ff5a3a; }
+.tc-right { right: calc(14px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); flex-wrap: wrap-reverse; justify-content: flex-end; width: 206px; }
+.tc-top { top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); }
+.tc-top .tc-btn, .tc-cams .tc-btn { height: 44px; min-width: 48px; font-size: 18px; }
+.tc-office { bottom: calc(14px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); }
+.tc-cams { bottom: calc(86px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); }
+.tc-hidden { left: calc(14px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+.tc-classic .tc-right { flex-direction: column; flex-wrap: nowrap; width: auto; bottom: 50%; transform: translateY(50%); }
+.tc-classic .tc-office { bottom: calc(44px + env(safe-area-inset-bottom)); }
+.fr-hud.touch .fr-cross { display: none; }
+.fr-hud.touch .fr-pause, .fr-hud.touch .fr-card { z-index: 40; }
+.fr-hud.touch .fr-office { bottom: 90px; }
+.fr-hud.touch .fr-inv { right: auto; left: 50%; transform: translateX(-50%); bottom: 12px; }
+.fr-hud.touch .fr-room { bottom: auto; top: 18px; }
+.fr-hud.touch .fr-hint { right: auto; left: 50%; transform: translateX(-50%); bottom: 64px; max-width: 46vw; text-align: center; }
+.fr-hud.touch .fr-sub { bottom: 110px; max-width: 52vw; }
+/* Classic office on a phone: the station buttons own the bottom centre, so subtitles and the camera map move up. */
+body.touch-ui .subtitles { bottom: 120px; left: 6%; right: 40%; }
+body.touch-ui .cam-map { right: 90px; }
+.tc-root::before { content: 'Turn your phone sideways for the best view'; position: absolute; left: 0; right: 0; top: 60px; text-align: center; font: 18px 'VT323', monospace; color: rgba(240, 234, 216, 0.75); display: none; }
+@media (orientation: portrait) { .tc-root::before { display: block; } }
+
+/* Small and short screens: menus and HUD shrink so nothing runs off the edge. */
+@media (max-width: 900px), (max-height: 520px) {
+  .screen { padding: 2vh 3vw; }
+  .panel { padding: 12px 14px; max-height: 96vh; }
+  .menu-btn { font-size: 18px; }
+  .btn { font-size: 16px; padding: 6px 10px; }
+  .fr-clock { font-size: 26px; right: 14px; top: 10px; }
+  .fr-pause h2 { font-size: 38px; }
+  .fr-pause p { font-size: 15px; }
+  .fr-prompt { font-size: 20px; }
+  .fr-slot { width: 48px; height: 36px; }
+  .fr-cam-list { max-width: 60vw; }
+  .tablet-bar { left: 20%; right: 20%; height: 44px; }
+}
+@media (max-height: 520px) {
+  h1.title { font-size: clamp(32px, 9vh, 60px); }
+  .menu { gap: 2px; margin-top: 1vh; }
+  .tc-btn { min-width: 50px; height: 50px; font-size: 18px; }
+  .tc-right { width: 182px; }
+}
