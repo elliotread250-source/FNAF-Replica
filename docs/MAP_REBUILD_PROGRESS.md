@@ -152,7 +152,7 @@ commands and outbound snapshots with seeded jitter and periodic stalls, keeping 
 does. `e2e/netLag.spec.ts` walks a guard into walls and doorframes at 50, 120 and 250 ms one way, then 120 ms with
 450 ms stalls every 2.5 s, then drops and reconnects the socket. At every 100 ms sample the predicted body was
 outside all solids, the predicted and server positions ended within 0.15 m, and the second browser saw the guard
-within 0.6 m of the server. Prediction ran 0.5, 0.5, 1.0 and 0.7 m ahead of the server while walking, which is
+within 0.6 m of the server. Prediction ran 0.5 to 1.0 m ahead of the server while walking (more at higher lag), which is
 the round trip showing up as expected and proves the shaping was live.
 
 Objects the first pass skipped: the clock-in tablet on the staff-room wall, a stage truss whose two cans sweep
