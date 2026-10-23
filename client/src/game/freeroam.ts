@@ -227,6 +227,17 @@ export class FreeRoam {
     hideUi: () => {
       this.ui.pause.style.display = 'none';
     },
+    /** Network tests: shape this player's traffic on the server (lag, jitter, stalls). */
+    net: (p: { lagMs: number; jitterMs: number; stallEveryMs: number; stallMs: number }) =>
+      new Promise((done) => getSocket().emit('fr:net', p, (r: unknown) => done(r))),
+    /** Long tests: hold the server's night clock so 6 AM doesn't end the run. */
+    holdClock: (hold: boolean) => new Promise((done) => getSocket().emit('fr:clock', { hold }, (r: unknown) => done(r))),
+    /** Network tests: the last authoritative position the server sent for this player. */
+    server: () => this.serverPos,
+    /** Network tests: is the predicted body overlapping anything solid right now? */
+    inWall: () => this.sim.world.blocked(this.me.body.x, this.me.body.y, this.me.body.z, FR.player.RADIUS * 0.9, this.me.body.height, FR.player.STEP_HEIGHT),
+    /** Network tests: drop the transport; Socket.IO reconnects and the server re-sends fr:start. */
+    drop: () => getSocket().io.engine.close(),
     /** Toggle the F9 collider overlay from tests. */
     overlay: (on: boolean) => {
       this.debugOn = on;

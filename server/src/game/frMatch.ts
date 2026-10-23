@@ -120,6 +120,11 @@ export class FrMatch {
     return true;
   }
 
+  /** Test hook: hold or release the night clock (only reachable when TEST_HOOKS=1). */
+  holdClock(hold: boolean): void {
+    this.sim.clockHeld = hold;
+  }
+
   /** Test hook: put a player somewhere (only reachable when TEST_HOOKS=1). */
   teleport(pid: string, x: number, y: number, z: number): void {
     const p = this.sim.players.get(pid);

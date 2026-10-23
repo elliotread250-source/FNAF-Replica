@@ -1,3 +1,4 @@
+import { NetShaper } from './netShaper';
 import type { Server, Socket } from 'socket.io';
 import {
   C2S,
@@ -58,6 +59,8 @@ export class LobbyManager {
   lobbies = new Map<string, Lobby>();
   private userLobby = new Map<string, string>();
   private sweepTimer: NodeJS.Timeout;
+  /** Test-only per-player lag/jitter/stall shaping of free-roam traffic (fr:net, TEST_HOOKS builds). */
+  private readonly shaper = new NetShaper();
   shuttingDown = false;
 
   constructor(
@@ -272,7 +275,21 @@ export class LobbyManager {
       }
       case 'fr:cmd': {
         if (!(lobby.match instanceof FrMatch) || lobby.match.ended) return;
-        lobby.match.cmd(user.id, msg.seq as number, msg.cmd as never);
+        const match = lobby.match;
+        this.shaper.deliver(user.id, 'in', () => {
+          if (!match.ended) match.cmd(user.id, msg.seq as number, msg.cmd as never);
+        });
+        return;
+      }
+      case 'fr:clock': {
+        if (!this.env.testHooks || !(lobby.match instanceof FrMatch)) return;
+        lobby.match.holdClock(Boolean(msg.hold));
+        reply({ ok: true });
+        return;
+      }
+      case 'fr:net': {
+        if (!this.env.testHooks) return;
+        reply({ ok: true, profile: this.shaper.set(user.id, msg as never) });
         return;
       }
       case 'look':
@@ -507,7 +524,7 @@ export class LobbyManager {
       testHooks: this.env.testHooks,
       players,
       introMs: this.env.fastNight ? 500 : 1500,
-      send: (pid, ev, payload) => this.io.to(USER(pid)).emit(ev, payload),
+      send: (pid, ev, payload) => this.shaper.deliver(pid, 'out', () => this.io.to(USER(pid)).emit(ev, payload)),
       onEnd: () => void this.endFreeRoam(l, match, players),
     });
     l.match = match;
