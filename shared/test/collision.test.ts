@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CollisionWorld, DESK_TOP, FR, OFFICE_KIT, OFFICE_RECT, doorLeaves, getLevel, newBody, stepBody, type Body, type Collider, type FrInput } from '../src';
+import { CollisionWorld, DESK_TOP, FR, OFFICE_KIT, OFFICE_RECT, doorLeaves, rotatedBoxes, rotatedExtent, circleBox, rayBox, getLevel, newBody, stepBody, type Body, type Collider, type FrInput } from '../src';
 
 // Phasing and door-shape invariants for the map rebuild (docs/MAP_REBUILD_PROGRESS.md, spec sections 4, 6 and 8).
 
@@ -134,9 +134,50 @@ describe('vaulting', () => {
 });
 
 describe('props', () => {
-  it('only uses quarter-turn rotations (colliders snap to 90 degrees)', () => {
-    const off = level.props.filter((p) => ((((p.ry ?? 0) % 90) + 90) % 90) !== 0).map((p) => `${p.type}@${p.x},${p.z}`);
-    expect(off).toEqual([]);
+  it('turns any rotation into a collider with the true diagonal outline', () => {
+    for (const ry of [0, 90, 12, 25, 35, 45, -18, 137, 200.5]) {
+      const w = 2.0;
+      const d = 0.9;
+      const [b] = rotatedBoxes(10, 20, w, d, ry, 0, 1);
+      const a = (ry * Math.PI) / 180;
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      const at = (lx: number, lz: number): [number, number] => [10 + lx * c + lz * sn, 20 - lx * sn + lz * c];
+      for (let i = 0; i <= 20; i++)
+        for (let j = 0; j <= 10; j++) {
+          // Inside the rectangle (shrunk 1 mm) touches; 2 cm outside each face does not.
+          const lx = -w / 2 + 0.001 + ((w - 0.002) * i) / 20;
+          const lz = -d / 2 + 0.001 + ((d - 0.002) * j) / 10;
+          expect(circleBox(...at(lx, lz), 0.001, b) > 0, `in ${ry}`).toBe(true);
+        }
+      for (const [lx, lz] of [[w / 2 + 0.02, 0], [-w / 2 - 0.02, 0.3], [0.5, d / 2 + 0.02], [-0.7, -d / 2 - 0.02], [w / 2 + 0.02, d / 2 + 0.02]]) {
+        expect(circleBox(...at(lx, lz), 0.001, b), `out ${ry}`).toBe(0);
+      }
+      // A ray straight at the long face hits it at the right distance.
+      const [fx, fz] = at(0, d / 2 + 1);
+      const t = rayBox(fx, 0.5, fz, -sn, 0, -c, b);
+      expect(t, `ray ${ry}`).toBeCloseTo(1, 4);
+    }
+  });
+
+  it('stops a guard at the face of an angled sofa, not at its bounding box', () => {
+    const sofa = level.props.find((p) => p.p?.label === 'angled sofa');
+    expect(sofa).toBeDefined();
+    const ry = sofa!.ry ?? 0;
+    const a = (ry * Math.PI) / 180;
+    // The sofa's front face normal in world space (local +Z turned like the mesh), and a yaw that walks into it.
+    const nx = Math.sin(a);
+    const nz = Math.cos(a);
+    const w = new CollisionWorld(level);
+    const b = newBody(sofa!.x + nx * 2.2, sofa!.z + nz * 2.2, 0, a);
+    run(b, w, { fwd: 1 }, 2);
+    const gap = (b.x - sofa!.x) * nx + (b.z - sofa!.z) * nz;
+    // Half-depth 0.45 + body radius 0.3: the guard stops flush against the turned face.
+    expect(gap).toBeGreaterThan(0.45 + P.RADIUS - 0.01);
+    expect(gap).toBeLessThan(0.45 + P.RADIUS + 0.01);
+    // A single axis-aligned box around the turned sofa would have held the guard much further out.
+    const [ex, ez] = rotatedExtent(2.0, 0.9, ry);
+    expect(gap).toBeLessThan(Math.min(ex, ez) / 2 + P.RADIUS - 0.05);
   });
 
   it('spawns never start inside anything', () => {

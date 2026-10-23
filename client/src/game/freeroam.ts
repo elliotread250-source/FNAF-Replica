@@ -1395,7 +1395,19 @@ export class FreeRoam {
     for (const k of this.sim.world.query(b.x - R, b.z - R, b.x + R, b.z + R, [])) {
       if (k.kind === 'floor' || k.kind === 'ceiling') continue;
       if (Math.abs((k.y1 + k.y2) / 2 - b.y) > 6) continue;
-      boxLines(k, k.kind === 'door' ? '#ffd21a' : k.kind === 'glass' ? '#40e0ff' : k.kind === 'prop' || k.kind === 'step' ? '#ff8a30' : '#8a8aff');
+      const hex = k.kind === 'door' ? '#ffd21a' : k.kind === 'glass' ? '#40e0ff' : k.kind === 'prop' || k.kind === 'step' ? '#ff8a30' : '#8a8aff';
+      if (k.rot) {
+        // Oriented box: draw the true turned rectangle, not its bounding box.
+        const r = k.rot;
+        const corner = (sx: number, sz: number): [number, number] => [r.cx + sx * r.hw * r.c + sz * r.hd * r.s, r.cz - sx * r.hw * r.s + sz * r.hd * r.c];
+        const cs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+        for (let i = 0; i < 4; i++) {
+          const [ax, az] = cs[i];
+          const [bx, bz] = cs[(i + 1) % 4];
+          for (const y of [k.y1, k.y2]) seg(ax, y, az, bx, y, bz, hex);
+          seg(ax, k.y1, az, ax, k.y2, az, hex);
+        }
+      } else boxLines(k, hex);
     }
     const ring = (x: number, y: number, z: number, r: number, hex: string) => {
       for (let i = 0; i < 16; i++) {

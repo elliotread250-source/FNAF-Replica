@@ -1,5 +1,6 @@
 import { createRng, next } from '../rng';
 import { officeKitColliders } from './officeKit';
+import { rotatedBoxes } from './rotated';
 import { roomKitColliders } from './roomKits';
 import { CAMERAS, HIDE_SPECS, INTERACTABLES, ITEM_SPAWNS, OPENING_SPECS, PROPS, ROOMS, SPAWNS } from './layout';
 import type {
@@ -29,11 +30,6 @@ interface Edge {
 
 const key = (a: number, b: number) => `${a},${b}`;
 
-function rotDims(w: number, d: number, ry: number): [number, number] {
-  const q = Math.round((((ry % 360) + 360) % 360) / 90) % 4;
-  return q % 2 === 1 ? [d, w] : [w, d];
-}
-
 function box(cx: number, cz: number, w: number, d: number, y1: number, y2: number): Box {
   return { x1: cx - w / 2, x2: cx + w / 2, z1: cz - d / 2, z2: cz + d / 2, y1, y2 };
 }
@@ -42,31 +38,29 @@ function box(cx: number, cz: number, w: number, d: number, y1: number, y2: numbe
 export function propColliders(p: PropDef): Collider[] {
   const y = p.y ?? 0;
   const ry = p.ry ?? 0;
-  const mk = (w: number, d: number, h: number, extra: Partial<Collider> = {}, dy = 0): Collider => {
-    const [rw, rd] = rotDims(w, d, ry);
-    const b = box(p.x, p.z, rw, rd, y + dy, y + dy + h);
-    return { ...b, kind: 'prop', low: h <= 1.0 && !extra.kind, ...extra };
-  };
+  // Any rotation: quarter turns give one exact box, other angles a cell approximation (rotated.ts).
+  const mk = (w: number, d: number, h: number, extra: Partial<Collider> = {}, dy = 0): Collider[] =>
+    rotatedBoxes(p.x, p.z, w, d, ry, y + dy, y + dy + h, { kind: 'prop', low: h <= 1.0 && !extra.kind, ...extra });
   const num = (k: string, d: number) => (typeof p.p?.[k] === 'number' ? (p.p[k] as number) : d);
   switch (p.type) {
     case 'block':
-      return [mk(num('w', 1), num('d', 1), num('h', 1))];
+      return mk(num('w', 1), num('d', 1), num('h', 1));
     case 'table':
-      return p.p?.long ? [mk(3.6, 1.1, 0.8)] : [mk(2.6, 1.1, 0.8)];
+      return p.p?.long ? mk(3.6, 1.1, 0.8) : mk(2.6, 1.1, 0.8);
     case 'chair':
-      return [mk(0.45, 0.45, 0.5)];
+      return mk(0.45, 0.45, 0.5);
     case 'locker':
-      return [mk(0.6, 0.5, 1.9)];
+      return mk(0.6, 0.5, 1.9);
     case 'cabinet':
-      return [mk(0.8, 0.9, 1.9)];
+      return mk(0.8, 0.9, 1.9);
     case 'giftbox':
-      return [mk(1.4, 1.4, 1.5)];
+      return mk(1.4, 1.4, 1.5);
     case 'musicbox':
-      return [mk(0.7, 0.7, 1.1)];
+      return mk(0.7, 0.7, 1.1);
     case 'coffin':
-      return [mk(0.8, 2.0, 0.7)];
+      return mk(0.8, 2.0, 0.7);
     case 'deck':
-      return [mk(num('w', 4), num('d', 4), num('h', 1), { kind: 'prop', low: false })];
+      return mk(num('w', 4), num('d', 4), num('h', 1), { kind: 'prop', low: false });
     case 'steps': {
       const n = num('n', 3);
       const run = num('run', 0.5);
@@ -128,7 +122,7 @@ export function levelChecksum(): string {
     h ^= Math.round(v * 1000) | 0;
     h = Math.imul(h, 0x01000193) >>> 0;
   };
-  for (const c of lv.colliders) [c.x1, c.x2, c.y1, c.y2, c.z1, c.z2, c.door ?? -1].forEach(mix);
+  for (const c of lv.colliders) [c.x1, c.x2, c.y1, c.y2, c.z1, c.z2, c.door ?? -1, c.rot?.c ?? 2, c.rot?.s ?? 2].forEach(mix);
   for (const d of lv.doors) [d.line, d.from, d.to, d.height, d.swing, d.hinge === 'from' ? 1 : 2, d.kind.length].forEach(mix);
   for (const i of lv.interactables) [i.x, i.y, i.z, i.id.length].forEach(mix);
   for (const sp of lv.spawns) [sp.x, sp.y, sp.z].forEach(mix);

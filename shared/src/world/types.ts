@@ -17,6 +17,12 @@ export interface Collider extends Box {
   /** Small things the player can vault over. */
   low?: boolean;
   kind?: 'wall' | 'floor' | 'ceiling' | 'prop' | 'step' | 'door' | 'glass';
+  /**
+   * Present on boxes turned off the world axes: the true shape is a rectangle of half-size hw x hd centred on
+   * (cx, cz), turned so that world = (lx c + lz s, -lx s + lz c). x1..z2 are then its bounding box, used only for
+   * broad-phase lookups; every narrow-phase test works in the rectangle's own frame.
+   */
+  rot?: { cx: number; cz: number; hw: number; hd: number; c: number; s: number };
 }
 
 export type StyleId =
