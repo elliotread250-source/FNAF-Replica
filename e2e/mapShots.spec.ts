@@ -116,7 +116,9 @@ test('room tour', async ({ page }) => {
     const cx = (x1 + x2) / 2;
     const cz = (z1 + z2) / 2;
     // Stand 0.8 m in from the corner nearest the room's first opening-free corner, look at the far corner.
-    const v = VIEWS[r.id];
+    // VIEW=x,z,tx,tz overrides the viewpoint (for a one-room close look).
+    const custom = process.env.VIEW ? process.env.VIEW.split(',').map(Number) : null;
+    const v = custom ? look(custom[0], custom[1], custom[2], custom[3]) : VIEWS[r.id];
     const sx = v ? v.x : x2 - x1 > 3 ? x1 + 0.8 : cx;
     const sz = v ? v.z : z2 - z1 > 3 ? z2 - 0.8 : cz;
     const yaw = v ? v.yaw : Math.atan2(-(cx + (x2 - x1) * 0.25 - sx), -(cz - (z2 - z1) * 0.25 - sz));

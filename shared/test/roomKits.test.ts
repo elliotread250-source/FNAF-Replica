@@ -61,7 +61,8 @@ describe('room kits', () => {
     const walls = level.colliders.filter((c) => c.kind === 'wall');
     const bad: string[] = [];
     for (const p of ROOM_KITS) {
-      if (p.policy !== 'flat' || p.kind === 'puddle') continue;
+      // Floor decals (puddles, mats, grease) lie on the floor, not on a wall.
+      if (p.policy !== 'flat' || p.y < level.roomById[p.room].floorY + 0.05) continue;
       const alongX = p.d < p.w; // a decal on a z-wall spans x
       const face = alongX ? p.z : p.x;
       const lo = (alongX ? p.x - p.w / 2 : p.z - p.d / 2) + 0.05;

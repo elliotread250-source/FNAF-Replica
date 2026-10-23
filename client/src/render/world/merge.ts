@@ -11,7 +11,13 @@ export function mergeStatic(src: THREE.Group): THREE.Group {
   const inv = new THREE.Matrix4().copy(src.matrixWorld).invert();
   const buckets = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; shadow: boolean }>();
   const keep: THREE.Object3D[] = [];
-  src.traverse((o) => {
+  // Walk the tree by hand so a dynamic object's children stay with it (Object3D.traverse can't skip subtrees).
+  const visit = (o: THREE.Object3D, fn: (o: THREE.Object3D) => void): void => {
+    fn(o);
+    if (o.userData.dynamic) return;
+    for (const c of [...o.children]) visit(c, fn);
+  };
+  visit(src, (o) => {
     if (o === src) return;
     if (o.userData.dynamic) {
       keep.push(o);
